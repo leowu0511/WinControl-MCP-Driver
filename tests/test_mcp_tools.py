@@ -47,7 +47,8 @@ try:
     expect(r["available_ids"], "0~1", "available_ids = '0~1'")
     expect(r["available_grid_ids"], None, "UIA 模式 available_grid_ids 應為 None")
     expect(r["grid_map"], None, "UIA 模式 grid_map 應為 None")
-    expect(r["screenshot_base64"], None, "未要求時 screenshot_base64 應為 None")
+    # ⚠️ ContextGuard R6: screenshot_base64 key 整個不存在 (不再有 include_screenshot 選項)
+    expect("screenshot_base64" in r, False, "screenshot_base64 key 不應存在 (防 agent 收截圖)")
     # 檢查狀態快取 (座標還在內部)
     expect(mcp_server._state["mode"], "uia", "state.mode = uia")
     expect(len(mcp_server._state["coord_map"]), 2, "state.coord_map 保留 2 個座標")
@@ -112,7 +113,7 @@ finally:
     engine.generate_grid_screenshot = orig_grid
 
 
-print("\n=== T1-5: get_screen_state (with screenshot) ===")
+print("\n=== T1-5: get_screen_state (絕不附截圖 — ContextGuard R6) ===")
 reset()
 orig_get = engine.get_clickable_elements
 orig_gen = engine.generate_marked_screenshot
@@ -125,12 +126,12 @@ engine.get_clickable_elements = lambda: [
 ]
 engine.generate_marked_screenshot = lambda e: {0: (10, 10)}
 try:
-    r = mcp_server.get_screen_state(include_screenshot=True)
-    expect(r["screenshot_base64"] is not None, True, "screenshot_base64 有值")
-    # Base64 解碼後應該能讀回原圖
-    import base64
-    decoded = base64.b64decode(r["screenshot_base64"])
-    expect(len(decoded) > 0, True, f"Base64 解碼後有 {len(decoded)} bytes")
+    r = mcp_server.get_screen_state()
+    # ⚠️ 關鍵斷言: Tool 1 絕對不該回傳截圖 Base64 給 agent
+    expect("screenshot_base64" in r, False, "screenshot_base64 key 不應存在 (防 context 爆炸)")
+    expect("screenshot_format" in r, False, "screenshot_format key 不應存在 (防 context 爆炸)")
+    expect(r.get("screenshot_path"), engine.OUTPUT_IMAGE_PATH, "screenshot_path 仍存在供除錯")
+    expect(r["text_list"] is not None, True, "text_list 一定有 (純觀察工具)")
 finally:
     engine.get_clickable_elements = orig_get
     engine.generate_marked_screenshot = orig_gen
@@ -343,14 +344,14 @@ engine.get_clickable_elements = lambda: [
 ]
 engine.generate_marked_screenshot = lambda e: {i: (i*100, 100) for i in range(10)}
 try:
-    # Step 1: 感知 (帶截圖走視覺模式)
-    state1 = mcp_server.get_screen_state(include_screenshot=True)
+    # Step 1: 感知 (純文字模式 — R6 起不附截圖)
+    state1 = mcp_server.get_screen_state()
     expect(state1["mode"], "uia", "感知 → UIA 模式")
     expect(state1["element_count"], 10, "抓到 10 個元素")
-    # ContextGuard 互斥: include_screenshot=True 時 text_list 應為 None
-    expect(state1["text_list"], None, "截圖模式 text_list 應為 None (互斥)")
-    expect(state1["screenshot_base64"] is not None, True, "截圖模式有截圖")
-    print(f"    (Agent 觀察到 {state1['element_count']} 個元素，截圖 {len(state1['screenshot_base64'])} chars)")
+    # ⚠️ R6: screenshot_base64 key 整個不存在 (不再有 include_screenshot 選項)
+    expect("screenshot_base64" in state1, False, "Tool 1 絕不附截圖 (ContextGuard R6)")
+    expect(state1["text_list"] is not None, True, "text_list 一定有 (純觀察工具)")
+    print(f"    (Agent 從 text_list 看到 {state1['element_count']} 個元素，截圖已從 schema 徹底移除)")
 
     # Step 2: Agent 根據 text_list 決定要按 Btn5 (target_id=5)
     result = mcp_server.execute_exact_action(

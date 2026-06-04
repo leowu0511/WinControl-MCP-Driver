@@ -50,15 +50,17 @@ expect_true(isinstance(engine.MAX_WALK_DEPTH, int) and engine.MAX_WALK_DEPTH > 0
 # ============================================================
 # Part 2：截圖壓縮設定檢查
 # ============================================================
-print("\n=== SS-1: 截圖壓縮常數已設定 ===")
-expect(mcp_server.SCREENSHOT_MAX_WIDTH, 1280, "最大寬度 = 1280")
-expect(mcp_server.SCREENSHOT_JPEG_QUALITY, 60, "JPEG quality = 60")
+print("\n=== SS-1: 截圖壓縮常數已設定 (R6 起搬到 engine.encode_image_compressed) ===")
+# R6: 截圖常數從 server.py 搬到 engine.py (Tool 3 內部用)
+# 預設值: max_width=1280, quality=60
+defaults = engine.encode_image_compressed.__defaults__
+expect(defaults, (1280, 60), f"encode_image_compressed 預設 (max_width=1280, quality=60), 實際: {defaults}")
 
-print("\n=== SS-2: screenshot_format 已改為 jpeg ===")
-expect(mcp_server._encode_image_to_base64.__doc__, mcp_server._encode_image_to_base64.__doc__,
-            "_encode_image_to_base64 仍是向後相容的別名")
-expect_true("JPEG" in str(mcp_server._encode_compressed_screenshot.__doc__),
-            "_encode_compressed_screenshot 註解提到 JPEG")
+print("\n=== SS-2: encode_image_compressed 註解提到 JPEG ===")
+expect_true(
+    "JPEG" in str(engine.encode_image_compressed.__doc__),
+    "encode_image_compressed 註解提到 JPEG 壓縮"
+)
 
 
 # ============================================================
@@ -77,8 +79,8 @@ for i in range(20):
 test_path = DATA_DIR / "test_4k_screen.jpg"
 img_4k.save(test_path, "PNG")  # 先存成 PNG (模擬 generate_marked_screenshot 產出)
 
-# 編碼
-b64 = mcp_server._encode_compressed_screenshot(str(test_path))
+# 編碼 (R6 起改用 engine.encode_image_compressed)
+b64 = engine.encode_image_compressed(str(test_path))
 b64_size_kb = len(b64) / 1024
 print(f"    4K 截圖壓縮後 Base64 大小: {b64_size_kb:.1f} KB")
 expect_true(b64_size_kb < 200,
@@ -100,7 +102,7 @@ print("\n=== SS-4: 小於 1280 寬的截圖不縮放 ===")
 img_small = Image.new("RGB", (1280, 720), "blue")
 test_path_small = DATA_DIR / "test_small_screen.png"
 img_small.save(test_path_small)
-b64_small = mcp_server._encode_compressed_screenshot(str(test_path_small))
+b64_small = engine.encode_image_compressed(str(test_path_small))
 img_back_small = Image.open(io.BytesIO(base64.b64decode(b64_small)))
 expect(img_back_small.width, 1280, "1280 寬不縮放")
 expect(img_back_small.height, 720, "720 高不縮放")
@@ -129,7 +131,7 @@ for i in range(300):
 img_real.save(DATA_DIR / "test_realistic_4k.png", "PNG")
 
 # 編碼
-b64 = mcp_server._encode_compressed_screenshot(str(DATA_DIR / "test_realistic_4k.png"))
+b64 = engine.encode_image_compressed(str(DATA_DIR / "test_realistic_4k.png"))
 b64_size_kb = len(b64) / 1024
 print(f"    4K 複雜畫面 JPEG Base64: {b64_size_kb:.1f} KB")
 expect_true(b64_size_kb < 300,

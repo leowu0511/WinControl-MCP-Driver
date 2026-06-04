@@ -8,7 +8,7 @@
 
    ┌─────────────────────────────────────────────────────────────┐
    │ Tier 1 感知層  get_screen_state                              │
-   │   - 掃描螢幕、回傳文字化 UI 清單 + (可選) Base64 截圖        │
+   │   - 掃描螢幕、回傳文字化 UI 清單 (絕不附 Base64 截圖)        │
    │   - 結果會「快取」給後續 execute_exact_action 使用           │
    ├─────────────────────────────────────────────────────────────┤
    │ Tier 2 精確層  execute_exact_action                          │
@@ -18,7 +18,8 @@
     │ Tier 3 委託層  execute_semantic_intent                       │
     │   - 【主要操作工具】所有 AI 優先使用 (全自動 抓圖→問Qwen→執行)│
     │   - 內部呼叫 VISION_API_KEY / VISION_BASE_URL 環境變數       │
-   └─────────────────────────────────────────────────────────────┘
+    │   - 截圖只在 server 端→Vision API 之間流動，不暴露給 agent  │
+    └─────────────────────────────────────────────────────────────┘
 
  啟動方式：
      python mcp_server.py
@@ -44,15 +45,11 @@
 # ============================================================
 # 套件引入與環境設定
 # ============================================================
-import base64
-import io
 import json
 import os
 import sys
 import logging
 from typing import Optional
-
-from PIL import Image  # 用於截圖壓縮 (JPEG + resize)
 
 # ★ 重要：所有 log 走 stderr (stdout 是 MCP 通訊用，不能混用)
 logging.basicConfig(
@@ -74,6 +71,15 @@ except ImportError:
 # WinControl MCP Driver 引擎 (同套件內的 engine)
 from wcmd import engine
 from wcmd import config as wcmd_config
+
+
+# ============================================================
+# 建立 MCP Server
+# ============================================================
+if _MCP_AVAILABLE:
+    mcp = FastMCP("wcmd")
+else:
+    mcp = None  # type: ignore  # 沒安裝 mcp 套件時用 None 佔位，import 不會炸
 
 
 # ============================================================
@@ -101,75 +107,8 @@ def _reset_state():
     _state["last_text_list"] = None
 
 
-# ============================================================
-# 截圖壓縮設定 (防止 context 爆炸)
-# ============================================================
-# 為什麼需要這段？
-#   原生 PNG 截圖 (1920x1080 全螢幕) 約 3~5 MB
-#   Base64 後約 4~7 MB 字串
-#   對 Vision Model 而言 = 數十萬 Token → context 瞬間撐爆
-#
-# 解法：強制轉 JPEG + 必要時縮放
-#   - 寬度 > 1280 時縮放至 1280 (對 AI 辨識紅框+數字已足夠，更小也省 token)
-#   - JPEG quality=60：對 AI 識別綽綽有餘，比 q70 又省 30%
-#   - 4K 螢幕的截圖 Base64 從 ~10MB 降到 ~80KB，省 99% token
-SCREENSHOT_MAX_WIDTH: int = 1280
-SCREENSHOT_JPEG_QUALITY: int = 60
-
-
-def _encode_compressed_screenshot(image_path: str) -> str:
-    """讀取截圖 → 無條件縮到目標寬度 → JPEG 壓縮 → 回傳 Base64 字串。
-
-    為什麼不用原本的 PNG 編碼？
-      - 1920x1080 PNG ≈ 3~5 MB，Base64 ≈ 4~7 MB → 數十萬 token
-      - 同畫面 JPEG q70 ≈ 200~400 KB，Base64 ≈ 300~500 KB → 數萬 token
-      - 視覺品質對 AI 識別紅框+編號無差別 (都是純色幾何)
-
-    為什麼「無條件」縮到 1280 (不再只 > 1280 才縮)？
-      - AI 看紅框數字，960px 就夠，1280px 是保險值
-      - 原 1920 螢幕縮到 1280 面積比 = 0.44，base64 從 ~500KB → ~150KB
-      - 配合 quality=60，可從 ~130k token → ~35k token (省 70%+)
-    """
-    with Image.open(image_path) as img:
-        # 1) 無條件縮到目標寬度 (不管原圖多大，統統壓到 1280)
-        #    寬度已經是 1280 的圖不動 (省時間)
-        if img.width != SCREENSHOT_MAX_WIDTH:
-            new_w = SCREENSHOT_MAX_WIDTH
-            new_h = int(img.height * (new_w / img.width))
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-        # 2) 轉 RGB (PNG 可能有 RGBA/灰階，JPEG 不支援)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-
-        # 3) JPEG 壓縮
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-
-def _encode_image_to_base64(image_path: str) -> str:
-    """舊版 PNG Base64 編碼 (向後相容別名)。
-
-    強烈建議使用 _encode_compressed_screenshot() 以避免 context 爆炸。
-    保留這個函式是為了在測試或除錯時仍能拿到原始 PNG。
-    """
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
-
-
-# ============================================================
-# 建立 MCP Server
-# ============================================================
-mcp = FastMCP("wcmd")
-
-
-# ============================================================
-# Tool 1：get_screen_state (感知層)
-# ============================================================
 @mcp.tool()
 def get_screen_state(
-    include_screenshot: bool = False,
     use_grid: bool = False,
     grid_rows: int = 10,
     grid_cols: int = 10,
@@ -183,34 +122,27 @@ def get_screen_state(
        不要看了畫面就假裝操作已完成 — 這是常見的幻覺陷阱。
 
     用途：
-      - 除錯：想確認目前螢幕長怎樣
       - 進階用法：搭配 execute_exact_action 自己指定 target_id
         (例如「我要點列表第 47 個項目」)
       - Vision Model API Key 沒設定時的降級方案
         (純文字清單 + 自己讀 ID)
+
+    ⚠️ 本工具「絕對不會」回傳截圖 Base64 給 agent。
+       Vision 判斷統一走 execute_semantic_intent (server 端內部完成)。
+       這樣可以保證截圖 (Base64 ~80KB) 不會進 agent 的 context，
+       避免多步驟操作時 context 累積爆炸。
 
     掃描當前螢幕並回傳可操作的 UI 元素清單 (文字化)。
 
     這是「感知工具」：呼叫後，螢幕狀態會被快取，
     緊接著呼叫 execute_exact_action 時會用此快取查找座標。
 
-    兩種使用模式 (二選一，避免浪費 context)：
-      【文字模式】include_screenshot=False (預設)
-        → 回傳 text_list，Agent 用語意判斷要點哪個 ID
-        → 適合無/弱視覺的小型 LLM
-      【視覺模式】include_screenshot=True
-        → 額外回傳 screenshot_base64，Agent 用視覺判斷
-        → 建議 text_list_max_items=0 跳過文字清單 (避免重複)
-        → 適合 Claude 3.5+ / GPT-4o / Qwen-VL-Plus
-
     Args:
-        include_screenshot: 是否額外回傳 Base64 編碼的螢幕截圖
-                           (供視覺模型觀看，例如 Claude 3.5 Sonnet/Opus)
         use_grid: True 時使用「網格模式」(適用於 UIA 抓不到元素的場景，
                   例如 Discord 客製化介面、Steam UI、遊戲、WebGL 畫布)
         grid_rows: 網格列數，僅 use_grid=True 生效 (預設 10，範圍 3~20)
         grid_cols: 網格欄數，僅 use_grid=True 生效 (預設 10，範圍 3~20)
-        text_list_max_items: text_list 最多列幾個元素 (預設 30，視覺模式建議設 0)。
+        text_list_max_items: text_list 最多列幾個元素 (預設 30)。
                             字元總長度另有硬上限 (MAX_TEXT_LIST_CHARS)。
 
     Returns:
@@ -218,14 +150,11 @@ def get_screen_state(
         {
             "mode": "uia" | "grid" | "empty",
             "element_count": int,
-            "text_list": str | None,           # 文字化 UI 清單 (給無視覺模型)
-                                              # include_screenshot=True 時為 None (避免重複)
+            "text_list": str | None,           # 文字化 UI 清單
             "available_ids": str | None,       # UIA 模式: 緊湊 ID 範圍字串 (e.g. "0~59")
                                                 # 座標不直接回傳，內部快取供 execute_exact_action 使用
             "available_grid_ids": str | None,  # Grid 模式: 緊湊 ID 範圍字串 (e.g. "A1~J10")
-            "screenshot_base64": str | None,   # 僅 include_screenshot=True 時有值
-            "screenshot_format": "jpeg",
-            "screenshot_path": str | None,     # 截圖本地路徑 (供除錯)
+            "screenshot_path": str | None,     # 截圖本地路徑 (供除錯；不會回傳 base64 給 agent)
         }
     """
     try:
@@ -259,8 +188,7 @@ def get_screen_state(
             result = {
                 "mode": "grid",
                 "element_count": len(grid_map),
-                # 互斥: 有截圖時不給 text_list (避免 context 重複)
-                "text_list": None if include_screenshot else text_list,
+                "text_list": text_list,
                 "coord_map": None,
                 "available_ids": None,
                 # 緊湊 ID 範圍字串: "A1~J10" 比 list 短超多
@@ -268,8 +196,6 @@ def get_screen_state(
                     f"A1~{engine.GRID_COL_LETTERS[cols-1]}{rows}" if grid_map else None
                 ),
                 "grid_map": None,  # ContextGuard: 保留 key 為 None 以維持 schema 穩定
-                "screenshot_base64": None,
-                "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),
             }
         else:
@@ -292,8 +218,6 @@ def get_screen_state(
                     "available_ids": None,
                     "grid_map": None,
                     "available_grid_ids": None,
-                    "screenshot_base64": None,
-                    "screenshot_format": "jpeg",
                     "screenshot_path": None,
                 }
 
@@ -308,26 +232,25 @@ def get_screen_state(
 
             # 文字化清單 (給無視覺模型判斷用)
             # ContextGuard: 透過 text_list_max_items 讓 agent 自控長度
-            # text_list_max_items=0 表示完全跳過 (視覺模式不需要)
+            # text_list_max_items=0 表示「只要視窗總覽、不列元素細節」
+            # (純除錯用，agent 想知道目前有哪些視窗開著)
             if text_list_max_items > 0:
                 text_list = engine.build_element_text_list(
                     elements, max_items=text_list_max_items
                 )
             else:
-                # 視覺模式：只給視窗總覽，不列元素細節
+                # 略過元素細節，只給視窗總覽
                 all_windows = (
                     elements[0].get("_all_windows", []) if elements else []
                 )
                 if all_windows:
                     text_list = (
                         f"[畫面上偵測到的視窗] {' | '.join(all_windows)}\n"
-                        f"(視覺模式：略過 {len(elements)} 個元素細節，"
-                        f"請直接看截圖)"
+                        f"(略過 {len(elements)} 個元素細節)"
                     )
                 else:
                     text_list = (
-                        f"(視覺模式：偵測到 {len(elements)} 個元素，"
-                        f"請直接看截圖)"
+                        f"(偵測到 {len(elements)} 個元素，已略過細節)"
                     )
             _state["last_text_list"] = text_list
 
@@ -338,28 +261,15 @@ def get_screen_state(
             result = {
                 "mode": "uia",
                 "element_count": len(elements),
-                # 互斥: 有截圖時不給 text_list (避免 context 重複)
-                "text_list": None if include_screenshot else text_list,
+                "text_list": text_list,
                 # ⚠️ ContextGuard: 不回傳完整座標表，只給緊湊 ID 範圍字串
                 # 座標仍存在 _state 內，供 execute_exact_action 使用
                 "coord_map": None,
                 "available_ids": f"0~{len(coord_map)-1}" if coord_map else None,
                 "grid_map": None,
                 "available_grid_ids": None,
-                "screenshot_base64": None,
-                "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),
             }
-
-        # 附加 Base64 截圖 (若要求) - 強制 JPEG 壓縮避免 context 爆炸
-        if include_screenshot and _state["last_screenshot_path"]:
-            result["screenshot_base64"] = _encode_compressed_screenshot(
-                _state["last_screenshot_path"]
-            )
-            logger.info(
-                f"[Tool 1] 已附加截圖 ({len(result['screenshot_base64'])} chars, "
-                f"JPEG q{SCREENSHOT_JPEG_QUALITY})"
-            )
 
         return result
 
