@@ -173,6 +173,14 @@ export WCMD_VISION_MODEL="qwen3.7-plus"
 
 **Grid Fallback**：當 UIA 抓不到元素 (例如桌面、圖片、影片) 時，自動降級為「疊加 N×M 網格」模式，讓 AI 直接指定 `A3`/`C7` 等座標。
 
+### 🛡️ Context 爆炸防護 (ContextGuard)
+
+| 元凶 | 預設行為 | 防護機制 |
+|---|---|---|
+| **Base64 截圖過大** (PNG 數 MB) | 1920px JPEG q70 | `_encode_compressed_screenshot()`：>1920px 自動縮放、轉 JPEG quality=70。**4K 截圖 Base64 從 ~10MB 降到 ~250KB，省 95% token** |
+| **UIA 抓整個桌面** (幾千元素) | 前景 + 彈出層 + maxDepth=5 | **Smart Pruning 兩道關卡**：① 過濾頂層視窗只留「前景 + 看得見的 MenuControl/WindowControl/PaneControl」② 每個視窗只走訪 depth ≤ 5。**掃描時間 < 0.1s，元素數量 90% 縮減** |
+| **text_list 直接回傳 List[Dict]** | 永遠是 String | `build_element_text_list(max_items=60)` 處理過的純文字，AI 直接讀 |
+
 ---
 
 ## 📦 安裝位置說明

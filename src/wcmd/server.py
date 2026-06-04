@@ -45,11 +45,14 @@
 # 套件引入與環境設定
 # ============================================================
 import base64
+import io
 import json
 import os
 import sys
 import logging
 from typing import Optional
+
+from PIL import Image  # 用於截圖壓縮 (JPEG + resize)
 
 # ★ 重要：所有 log 走 stderr (stdout 是 MCP 通訊用，不能混用)
 logging.basicConfig(
@@ -98,8 +101,52 @@ def _reset_state():
     _state["last_text_list"] = None
 
 
+# ============================================================
+# 截圖壓縮設定 (防止 context 爆炸)
+# ============================================================
+# 為什麼需要這段？
+#   原生 PNG 截圖 (1920x1080 全螢幕) 約 3~5 MB
+#   Base64 後約 4~7 MB 字串
+#   對 Vision Model 而言 = 數十萬 Token → context 瞬間撐爆
+#
+# 解法：強制轉 JPEG + 必要時縮放
+#   - 寬度 > 1920 時縮放至一半 (4K 螢幕常見)
+#   - JPEG quality=70：對 AI 識別紅框/數字綽綽有餘，檔案只剩 5~10%
+SCREENSHOT_MAX_WIDTH: int = 1920
+SCREENSHOT_JPEG_QUALITY: int = 70
+
+
+def _encode_compressed_screenshot(image_path: str) -> str:
+    """讀取截圖 → 縮放 (必要時) → JPEG 壓縮 → 回傳 Base64 字串。
+
+    為什麼不用原本的 PNG 編碼？
+      - 1920x1080 PNG ≈ 3~5 MB，Base64 ≈ 4~7 MB → 數十萬 token
+      - 同畫面 JPEG q70 ≈ 200~400 KB，Base64 ≈ 300~500 KB → 數萬 token
+      - 視覺品質對 AI 識別紅框+編號無差別 (都是純色幾何)
+    """
+    with Image.open(image_path) as img:
+        # 1) 過寬就縮放 (4K 螢幕或更高解析度)
+        if img.width > SCREENSHOT_MAX_WIDTH:
+            new_w = SCREENSHOT_MAX_WIDTH
+            new_h = int(img.height * (new_w / img.width))
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        # 2) 轉 RGB (PNG 可能有 RGBA/灰階，JPEG 不支援)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # 3) JPEG 壓縮
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 def _encode_image_to_base64(image_path: str) -> str:
-    """將圖片檔編碼為 Base64 字串 (給 MCP Client 顯示用)"""
+    """舊版 PNG Base64 編碼 (向後相容別名)。
+
+    強烈建議使用 _encode_compressed_screenshot() 以避免 context 爆炸。
+    保留這個函式是為了在測試或除錯時仍能拿到原始 PNG。
+    """
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
@@ -143,7 +190,7 @@ def get_screen_state(
             "coord_map": dict | None,     # UIA 模式：{"0": [x, y], "1": [x, y], ...}
             "grid_map":  dict | None,     # Grid 模式：{"A1": [x, y], "B1": [x, y], ...}
             "screenshot_base64": str | None,   # 僅 include_screenshot=True 時有值
-            "screenshot_format": "png",
+            "screenshot_format": "jpeg",
             "screenshot_path": str | None,     # 截圖本地路徑 (供除錯)
         }
     """
@@ -182,7 +229,7 @@ def get_screen_state(
                 "coord_map": None,
                 "grid_map": {k: list(v) for k, v in grid_map.items()},
                 "screenshot_base64": None,
-                "screenshot_format": "png",
+                "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),
             }
         else:
@@ -204,7 +251,7 @@ def get_screen_state(
                     "coord_map": None,
                     "grid_map": None,
                     "screenshot_base64": None,
-                    "screenshot_format": "png",
+                    "screenshot_format": "jpeg",
                     "screenshot_path": None,
                 }
 
@@ -234,16 +281,19 @@ def get_screen_state(
                 },
                 "grid_map": None,
                 "screenshot_base64": None,
-                "screenshot_format": "png",
+                "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),
             }
 
-        # 附加 Base64 截圖 (若要求)
+        # 附加 Base64 截圖 (若要求) - 強制 JPEG 壓縮避免 context 爆炸
         if include_screenshot and _state["last_screenshot_path"]:
-            result["screenshot_base64"] = _encode_image_to_base64(
+            result["screenshot_base64"] = _encode_compressed_screenshot(
                 _state["last_screenshot_path"]
             )
-            logger.info(f"[Tool 1] 已附加截圖 ({len(result['screenshot_base64'])} chars)")
+            logger.info(
+                f"[Tool 1] 已附加截圖 ({len(result['screenshot_base64'])} chars, "
+                f"JPEG q{SCREENSHOT_JPEG_QUALITY})"
+            )
 
         return result
 

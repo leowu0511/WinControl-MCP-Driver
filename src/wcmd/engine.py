@@ -262,10 +262,27 @@ GRID_LABEL_OUTLINE = (0, 0, 0)       # 黑邊
 # ============================================================
 # 函數 1：抓取目前桌面所有「可點擊」的 UI 元素
 # ============================================================
+# 最大走訪深度限制 (防止掃到無窮嵌套的 UI 樹耗時過久)
+# 經驗值：絕大多數「有意義的可點擊元素」都在 depth 5 以內
+MAX_WALK_DEPTH: int = 5
+
+
 def get_clickable_elements() -> List[Dict[str, Any]]:
     """
-    使用 uiautomation 走訪整個 Windows UI Automation 樹，
-    過濾出可點擊類型的元素，並回傳包含「編號、bbox、中心點」等資訊的清單。
+    智能剪枝掃描 (Smart Pruning Scan)：只掃描「前景視窗 + 可見的彈出層」。
+
+    為什麼不做全桌面 WalkControl？
+      1. 背景應用程式 (Line / Spotify / 檔案總管) 的 UI 節點會灌進來，
+         一次掃到幾千幾萬個元素
+      2. AI 收到這麼大的 text_list，context 直接撐爆
+      3. 掃描時間也會拉長到數秒
+
+    本函式的剪枝策略 (兩關)：
+      關卡 1 — 頂層視窗過濾：只保留
+        (a) 當前前景視窗 (GetForegroundControl)
+        (b) 可見的 MenuControl / WindowControl / PaneControl
+            (右鍵選單、對話框、ComboBox 下拉等)
+      關卡 2 — 深度限制：每個保留的頂層視窗只走訪 depth <= 5
 
     回傳格式 (list[dict])：
         [
@@ -275,6 +292,7 @@ def get_clickable_elements() -> List[Dict[str, Any]]:
                 "control_type": str,            # 元素類型 (例如 "ButtonControl")
                 "bbox":         (l, t, r, b),   # 邊界框 (left, top, right, bottom)
                 "center":       (cx, cy),       # 中心點座標 (已處理過 DPI)
+                "window_name":  str,            # 該元素所屬的視窗名稱
             },
             ...
         ]
@@ -282,78 +300,101 @@ def get_clickable_elements() -> List[Dict[str, Any]]:
     elements: List[Dict[str, Any]] = []
     # 用 set 記錄已抓過的 bbox，過濾掉「父子控制項重疊在同一矩形」的情況
     seen_rects: set = set()
-    # 追蹤「目前所在的最上層 (top-level) 視窗名稱」
-    # 為什麼要這個？因為螢幕上可能有多個視窗，每個視窗都有自己的「關閉 X 按鈕」，
-    # 若不告訴 AI 元素屬於哪個視窗，它無法分辨同名的元素。
-    current_window_name: str = "(未命名視窗)"
     # 記錄所有出現過的視窗 (用於文字清單的總覽區塊)
     window_set: set = set()
 
-    # 取得桌面根控制項 (整個螢幕的 UI 樹根節點)
     root = uiautomation.GetRootControl()
+    foreground = uiautomation.GetForegroundControl()
 
-    # WalkControl 會以「深度優先」走訪所有子控制項
-    # includeTop=False 表示不包含根節點本身 (避免抓到整個桌面)
-    # maxDepth=0xFFFFFFFF 表示走訪到最深的層級
-    for control, depth in uiautomation.WalkControl(
-        root, includeTop=False, maxDepth=0xFFFFFFFF
-    ):
+    # ============================================================
+    # 關卡 1：過濾頂層視窗，只留「有意義」的兩類
+    # ============================================================
+    target_top_windows: list = []
+    for win in root.GetChildren():
         try:
-            # 0. 追蹤 top-level 視窗
-            #    在 includeTop=False 模式下，depth=1 表示「桌面根的直接子項」，
-            #    也就是「最上層的應用程式視窗」 (例如 PowerShell、工作管理員、檔案總管)。
-            #    只要遇到新的 depth=1，就把 current_window_name 更新成它的 Name。
-            if depth == 1:
-                wname = (control.Name or "").strip()
-                if wname and wname.lower() not in ("program manager", "desktop"):
-                    current_window_name = wname
-                else:
-                    current_window_name = "(桌面/未命名視窗)"
-                window_set.add(current_window_name)
+            # 條件 A：當前前景視窗 (主角)
+            is_foreground = uiautomation.ControlsAreSame(win, foreground)
 
-            # 1. 取得控制項類型名稱 (例如 "ButtonControl")
-            ctype = control.ControlTypeName
-            if ctype not in CLICKABLE_CONTROL_TYPES:
-                continue
+            # 條件 B：可見的彈出層 (配角：右鍵選單、對話框、ComboBox 下拉)
+            # 用 BoundingRectangle 面積 > 0 判斷是否真的在畫面上
+            is_visible_popup = False
+            try:
+                rect = win.BoundingRectangle
+                if rect and (rect.right - rect.left) > 0 and (rect.bottom - rect.top) > 0:
+                    # 只抓特定 ControlType，避免抓到背景閒置應用程式的隱藏視窗
+                    if win.ControlTypeName in ("MenuControl", "WindowControl", "PaneControl"):
+                        is_visible_popup = True
+            except Exception:
+                is_visible_popup = False
 
-            # 2. 取得 BoundingRectangle (uiautomation 內部回傳的是 Rect 物件)
-            rect = control.BoundingRectangle
-            if rect is None:
-                continue
-
-            left, top, right, bottom = rect.left, rect.top, rect.right, rect.bottom
-            width = right - left
-            height = bottom - top
-
-            # 3. 過濾掉面積過小 (寬或高 <= MIN_ELEMENT_SIZE) 的元素
-            if width < MIN_ELEMENT_SIZE or height < MIN_ELEMENT_SIZE:
-                continue
-
-            # 4. 過濾掉重複的矩形 (父子控制項重疊時常見)
-            rect_key = (left, top, right, bottom)
-            if rect_key in seen_rects:
-                continue
-            seen_rects.add(rect_key)
-
-            # 5. 計算中心點座標 (用於後續 pyautogui 點擊)
-            cx = (left + right) // 2
-            cy = (top + bottom) // 2
-
-            # 6. 將整理後的元素資訊加入清單
-            #    這裡多帶一個「window_name」欄位，文字清單 Prompt 會用到
-            elements.append({
-                "id":           len(elements),
-                "name":         control.Name or "",
-                "control_type": ctype,
-                "bbox":         (left, top, right, bottom),
-                "center":       (cx, cy),
-                "window_name":  current_window_name,
-            })
+            if is_foreground or is_visible_popup:
+                target_top_windows.append(win)
         except Exception:
-            # 單一元素讀取失敗不影響整體流程 (例如該控制項已被銷毀)
+            # 單一頂層視窗讀取失敗不影響整體
             continue
 
-    # 把所有出現過的視窗也記在第一個元素上 (讓 Prompt 可以讀到完整視窗清單)
+    # ============================================================
+    # 關卡 2：只對「有意義的視窗」做深度走訪 (限制 maxDepth=5)
+    # ============================================================
+    for top_win in target_top_windows:
+        try:
+            current_window_name = (top_win.Name or "").strip() or "(未命名視窗)"
+            # 排除桌面/Program Manager (它不是應用程式)
+            if current_window_name.lower() in ("program manager", "desktop"):
+                current_window_name = "(桌面)"
+            window_set.add(current_window_name)
+
+            for control, depth in uiautomation.WalkControl(
+                top_win, includeTop=True, maxDepth=MAX_WALK_DEPTH
+            ):
+                try:
+                    # 1. 取得控制項類型名稱 (例如 "ButtonControl")
+                    ctype = control.ControlTypeName
+                    if ctype not in CLICKABLE_CONTROL_TYPES:
+                        continue
+
+                    # 2. 取得 BoundingRectangle
+                    rect = control.BoundingRectangle
+                    if rect is None:
+                        continue
+
+                    left, top, right, bottom = (
+                        rect.left, rect.top, rect.right, rect.bottom
+                    )
+                    width = right - left
+                    height = bottom - top
+
+                    # 3. 過濾掉面積過小的元素
+                    if width < MIN_ELEMENT_SIZE or height < MIN_ELEMENT_SIZE:
+                        continue
+
+                    # 4. 過濾掉重複的矩形 (父子控制項重疊時常見)
+                    rect_key = (left, top, right, bottom)
+                    if rect_key in seen_rects:
+                        continue
+                    seen_rects.add(rect_key)
+
+                    # 5. 計算中心點座標
+                    cx = (left + right) // 2
+                    cy = (top + bottom) // 2
+
+                    # 6. 加入元素清單
+                    elements.append({
+                        "id":           len(elements),
+                        "name":         control.Name or "",
+                        "control_type": ctype,
+                        "bbox":         (left, top, right, bottom),
+                        "center":       (cx, cy),
+                        "window_name":  current_window_name,
+                    })
+                except Exception:
+                    # 單一元素讀取失敗不影響整體
+                    continue
+        except Exception:
+            # 整個視窗走訪失敗不影響其他視窗
+            continue
+
+    # 把所有出現過的視窗記在第一個元素上 (供 Prompt 顯示總覽)
     if elements:
         elements[0]["_all_windows"] = sorted(window_set)
     return elements

@@ -15,13 +15,14 @@ TESTS_DIR = Path(__file__).parent
 
 # 列出所有要跑的 script-style 測試 (依賴順序：基礎測試先跑)
 SCRIPTS = [
-    "test_phase26.py",      # parse_ai_response 單元測試
-    "test_dispatcher.py",   # execute_action dispatcher
-    "test_e2e.py",          # main() 端到端
-    "test_phase27.py",      # scroll/drag/grid
-    "test_grid_e2e.py",     # grid fallback e2e
-    "test_grid_real.py",    # 真實螢幕 grid
-    "test_mcp_tools.py",    # 3 個 MCP tools
+    "test_phase26.py",         # parse_ai_response 單元測試
+    "test_dispatcher.py",      # execute_action dispatcher
+    "test_e2e.py",             # main() 端到端
+    "test_phase27.py",         # scroll/drag/grid
+    "test_grid_e2e.py",        # grid fallback e2e
+    "test_grid_real.py",       # 真實螢幕 grid
+    "test_mcp_tools.py",       # 3 個 MCP tools
+    "test_smart_pruning.py",   # Smart Pruning + JPEG 截圖壓縮
 ]
 
 
