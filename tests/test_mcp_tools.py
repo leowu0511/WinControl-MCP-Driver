@@ -154,7 +154,7 @@ mcp_server._state["coord_map"] = {0: (10, 10), 1: (100, 100), 2: (200, 200)}
 mcp_server._state["grid_map"] = {}
 r = mcp_server.execute_exact_action(action="click", target_id=1, dry_run=True)
 expect(r["status"], "ok", "click 成功")
-expect(r["coord"], None, "coord 被移除 (ContextGuard，agent 不需像素座標)")
+expect(r.get("coord"), None, "coord 被移除 (ContextGuard，agent 不需像素座標)")
 
 
 print("\n=== T2-3: execute_exact_action (UIA 模式 hotkey) ===")
@@ -169,7 +169,7 @@ mcp_server._state["grid_map"] = {"A1": (50, 50), "B2": (150, 150), "C3": (250, 2
 mcp_server._state["coord_map"] = {}
 r = mcp_server.execute_exact_action(action="click", grid_id="B2", dry_run=True)
 expect(r["status"], "ok", "grid click 成功")
-expect(r["coord"], None, "coord 被移除 (ContextGuard)")
+expect(r.get("coord"), None, "coord 被移除 (ContextGuard)")
 
 
 print("\n=== T2-5: execute_exact_action (UIA 模式但給 grid_id → 找不到) ===")
@@ -200,7 +200,7 @@ r = mcp_server.execute_exact_action(
     action="drag", start_id=0, end_id=5, dry_run=True
 )
 expect(r["status"], "ok", "drag 成功")
-expect(r["coord"], None, "drag coord 被移除 (ContextGuard)")
+expect(r.get("coord"), None, "drag coord 被移除 (ContextGuard)")
 
 
 print("\n=== T2-8: execute_exact_action (type Unicode 中文) ===")
@@ -235,6 +235,10 @@ engine.get_clickable_elements = lambda: [
 ]
 engine.generate_marked_screenshot = lambda e: {0: (100, 100)}
 engine.ask_vision_model = lambda img, instr, els: {"action": "click", "target_id": 0, "reason": "點 X"}
+# 設假 API Key 讓 server 的 API Key 檢查通過 (T3 才會繼續到 mock 的 ask_vision_model)
+from wcmd import config as wcmd_config
+saved_api_key = wcmd_config.VISION_API_KEY
+wcmd_config.VISION_API_KEY = "fake-key-for-test"
 try:
     r = mcp_server.execute_semantic_intent("點 X 按鈕", dry_run=True)
     expect(r["status"], "ok", "全自動 click 成功")
@@ -247,6 +251,7 @@ finally:
     engine.generate_marked_screenshot = orig_gen
     engine.ask_vision_model = orig_ask
     engine.ask_vision_model_grid = orig_ask_grid
+    wcmd_config.VISION_API_KEY = saved_api_key
 
 
 print("\n=== T3-2: execute_semantic_intent (UIA 空 → 自動降級 Grid) ===")
@@ -266,17 +271,22 @@ engine.generate_grid_screenshot = lambda rows=10, cols=10: (
 engine.ask_vision_model_grid = lambda img, instr, rows=10, cols=10: {
     "action": "click", "grid_id": "B2", "reason": "網格 B2"
 }
+# 設假 API Key (T3 才會繼續到 mock)
+from wcmd import config as wcmd_config
+saved_api_key_2 = wcmd_config.VISION_API_KEY
+wcmd_config.VISION_API_KEY = "fake-key-for-test"
 try:
     r = mcp_server.execute_semantic_intent("點中間", dry_run=True)
     expect(r["status"], "ok", "Grid 降級 click 成功")
     expect(r["action"], "click", "action=click")
-    expect(r["coord"], None, "coord 被移除 (ContextGuard)")
+    expect(r.get("coord"), None, "coord 被移除 (ContextGuard)")
     expect(r["mode_used"], "grid", "記錄使用 grid 模式")
     expect(mcp_server._state["mode"], "grid", "state 更新為 grid")
 finally:
     engine.get_clickable_elements = orig_get
     engine.generate_grid_screenshot = orig_grid
     engine.ask_vision_model_grid = orig_ask_grid
+    wcmd_config.VISION_API_KEY = saved_api_key_2
 
 
 print("\n=== T3-3: execute_semantic_intent (force_grid=True) ===")
@@ -345,7 +355,7 @@ try:
         action="click", target_id=5, dry_run=True
     )
     expect(result["status"], "ok", "點擊 Btn5 成功")
-    expect(result["coord"], None, "coord 被移除 (ContextGuard)")
+    expect(result.get("coord"), None, "coord 被移除 (ContextGuard)")
     print(f"    (Agent 決定 → click target 5 → 像素座標已在 MCP log，不進 context)")
 
     # Step 3: 然後按 Ctrl+S
