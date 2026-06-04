@@ -15,9 +15,9 @@
    │   - 接收明確的 action + 座標/ID，直接 PyAutoGUI 執行         │
    │   - 走 dispatcher，不呼叫 AI API (零延遲、零成本)            │
    ├─────────────────────────────────────────────────────────────┤
-   │ Tier 3 委託層  execute_semantic_intent                       │
-   │   - 給無視覺模型使用：全自動 (抓圖 → 問 Qwen → 執行)         │
-   │   - 內部呼叫 VISION_API_KEY / VISION_BASE_URL 環境變數       │
+    │ Tier 3 委託層  execute_semantic_intent                       │
+    │   - 【主要操作工具】所有 AI 優先使用 (全自動 抓圖→問Qwen→執行)│
+    │   - 內部呼叫 VISION_API_KEY / VISION_BASE_URL 環境變數       │
    └─────────────────────────────────────────────────────────────┘
 
  啟動方式：
@@ -176,6 +176,19 @@ def get_screen_state(
     text_list_max_items: int = 30,
 ) -> dict:
     """
+    【純觀察工具】僅用於查看目前畫面狀態，不用於執行操作。
+
+    ⚠️ 若要執行任何 UI 操作 (點擊/輸入/滾動/按熱鍵/拖曳)，
+       請使用 execute_semantic_intent，本工具「不會」執行動作。
+       不要看了畫面就假裝操作已完成 — 這是常見的幻覺陷阱。
+
+    用途：
+      - 除錯：想確認目前螢幕長怎樣
+      - 進階用法：搭配 execute_exact_action 自己指定 target_id
+        (例如「我要點列表第 47 個項目」)
+      - Vision Model API Key 沒設定時的降級方案
+        (純文字清單 + 自己讀 ID)
+
     掃描當前螢幕並回傳可操作的 UI 元素清單 (文字化)。
 
     這是「感知工具」：呼叫後，螢幕狀態會被快取，
@@ -473,9 +486,23 @@ def execute_semantic_intent(
     force_grid: bool = False,
 ) -> dict:
     """
-    給無視覺能力的小型 LLM 使用的高階介面。
+    【主要操作工具，所有 AI 均應優先使用此工具執行任何 UI 操作】
 
-    工具會自動完成：抓取螢幕 → 呼叫內建 Vision Model (Qwen3.7 Plus) →
+    無論你自身是否具備視覺能力，都必須透過此工具操作畫面 UI。
+    視覺判斷由內建 Vision Model 負責，不依賴你自身的視覺能力。
+    工具內部自動完成：截圖 → Vision Model 定位元素 → 執行 PyAutoGUI 動作。
+
+    ⚠️ 不要用 get_screen_state 看一眼螢幕就假裝操作完成。
+       看到元素 ≠ 操作過元素，必須呼叫本工具才會真的執行動作。
+
+    用自然語言描述意圖即可，例如：
+      - "點擊確定按鈕"
+      - "關閉工作管理員視窗"
+      - "在搜尋框輸入 hello"
+      - "按 Ctrl+S 儲存"
+      - "在工作管理員選第一個處理程序，按結束工作"
+
+    工具會自動完成：抓取當前螢幕 → 呼叫內建 Vision Model (Qwen3.7 Plus) →
     解析動作 JSON → 執行對應 PyAutoGUI 動作。
 
     內部使用環境變數：
@@ -485,11 +512,21 @@ def execute_semantic_intent(
 
     Args:
         instruction: 高階意圖 (例如 "點擊工作管理員的 X 按鈕"、"按 Ctrl+S 存檔")
-        dry_run:     若為 True，僅預演不實際操作
-        force_grid:  強制走 Grid 模式 (略過 UIA 抓元素)
+        dry_run:     若為 True，僅預演不實際操作 (回傳會包含 ai_reason 讓你預覽)
+        force_grid:  強制走 Grid 模式 (略過 UIA 抓元素；UIA 失敗時用)
 
     Returns:
-        dict: {"status", "action", "message", "ai_reason", "mode_used"}
+        dict: {
+            "status": "ok" | "error",     # 執行動作是否成功
+            "action": "click" | "type" | ...,  # 實際執行的動作類型
+            "message": str,                 # 人類可讀的結果訊息
+            "ai_reason": str,               # Vision Model 為何選這個動作
+            "mode_used": "uia" | "grid",    # 用了哪種掃描模式
+        }
+
+    何時該用其他工具：
+      - get_screen_state: 除錯、想看 UI 長相、或 Vision API Key 沒設
+      - execute_exact_action: 已經知道精確的 target_id/grid_id (例如「點列表第 5 個」)
     """
     try:
         # 檢查 API Key (優先順序：config → engine 全域常數 → 環境變數)
