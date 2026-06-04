@@ -42,13 +42,16 @@ try:
     expect(r["mode"], "uia", "UIA 模式")
     expect(r["element_count"], 2, "抓到 2 個元素")
     expect("確定" in r["text_list"], True, "text_list 包含元素名稱")
-    expect("0" in r["coord_map"], True, "coord_map 包含 id=0")
-    expect(r["coord_map"]["0"], [100, 100], "coord_map[0] = [100, 100]")
+    # ContextGuard: 不再回傳完整 coord_map，只回 available_ids
+    expect(r["coord_map"], None, "coord_map 應為 None (ContextGuard 移除)")
+    expect(r["available_ids"], ["0", "1"], "available_ids = ['0', '1']")
+    expect(r["available_grid_ids"], None, "UIA 模式 available_grid_ids 應為 None")
     expect(r["grid_map"], None, "UIA 模式 grid_map 應為 None")
     expect(r["screenshot_base64"], None, "未要求時 screenshot_base64 應為 None")
-    # 檢查狀態快取
+    # 檢查狀態快取 (座標還在內部)
     expect(mcp_server._state["mode"], "uia", "state.mode = uia")
     expect(len(mcp_server._state["coord_map"]), 2, "state.coord_map 保留 2 個座標")
+    expect(mcp_server._state["coord_map"][0], (100, 100), "state.coord_map[0] = (100, 100)")
 finally:
     engine.get_clickable_elements = orig_get
     engine.generate_marked_screenshot = orig_gen
@@ -63,6 +66,7 @@ try:
     expect(r["mode"], "empty", "UIA 空 → mode=empty")
     expect(r["element_count"], 0, "element_count=0")
     expect(r["coord_map"], None, "empty 時 coord_map=None")
+    expect(r["available_ids"], None, "empty 時 available_ids=None")
     expect(mcp_server._state["mode"], "empty", "state 標記為 empty")
 finally:
     engine.get_clickable_elements = orig_get
@@ -80,8 +84,10 @@ try:
     r = mcp_server.get_screen_state(use_grid=True, grid_rows=5, grid_cols=8)
     expect(r["mode"], "grid", "Grid 模式")
     expect(r["element_count"], 40, "5*8=40 個格子")
-    expect("A1" in r["grid_map"], True, "grid_map 含 A1")
-    expect(r["grid_map"]["A1"], [50, 40], "A1 中心座標")
+    # ContextGuard: 不回傳 grid_map 座標表，只回 ID 清單
+    expect(r["grid_map"], None, "grid_map 應為 None (ContextGuard 移除)")
+    expect("A1" in r["available_grid_ids"], True, "available_grid_ids 含 A1")
+    expect(len(r["available_grid_ids"]), 40, "available_grid_ids 應有 40 個")
     expect(r["coord_map"], None, "Grid 模式 coord_map=None")
     expect(mcp_server._state["mode"], "grid", "state.mode=grid")
     expect(mcp_server._state["grid_map"]["E5"], (450, 360), "state.grid_map 保留座標")

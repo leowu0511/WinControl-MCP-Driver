@@ -110,10 +110,11 @@ def _reset_state():
 #   對 Vision Model 而言 = 數十萬 Token → context 瞬間撐爆
 #
 # 解法：強制轉 JPEG + 必要時縮放
-#   - 寬度 > 1920 時縮放至一半 (4K 螢幕常見)
-#   - JPEG quality=70：對 AI 識別紅框/數字綽綽有餘，檔案只剩 5~10%
-SCREENSHOT_MAX_WIDTH: int = 1920
-SCREENSHOT_JPEG_QUALITY: int = 70
+#   - 寬度 > 1280 時縮放至 1280 (對 AI 辨識紅框+數字已足夠，更小也省 token)
+#   - JPEG quality=60：對 AI 識別綽綽有餘，比 q70 又省 30%
+#   - 4K 螢幕的截圖 Base64 從 ~10MB 降到 ~80KB，省 99% token
+SCREENSHOT_MAX_WIDTH: int = 1280
+SCREENSHOT_JPEG_QUALITY: int = 60
 
 
 def _encode_compressed_screenshot(image_path: str) -> str:
@@ -166,12 +167,22 @@ def get_screen_state(
     use_grid: bool = False,
     grid_rows: int = 10,
     grid_cols: int = 10,
+    text_list_max_items: int = 30,
 ) -> dict:
     """
     掃描當前螢幕並回傳可操作的 UI 元素清單 (文字化)。
 
     這是「感知工具」：呼叫後，螢幕狀態會被快取，
     緊接著呼叫 execute_exact_action 時會用此快取查找座標。
+
+    兩種使用模式 (二選一，避免浪費 context)：
+      【文字模式】include_screenshot=False (預設)
+        → 回傳 text_list，Agent 用語意判斷要點哪個 ID
+        → 適合無/弱視覺的小型 LLM
+      【視覺模式】include_screenshot=True
+        → 額外回傳 screenshot_base64，Agent 用視覺判斷
+        → 建議 text_list_max_items=0 跳過文字清單 (避免重複)
+        → 適合 Claude 3.5+ / GPT-4o / Qwen-VL-Plus
 
     Args:
         include_screenshot: 是否額外回傳 Base64 編碼的螢幕截圖
@@ -180,15 +191,18 @@ def get_screen_state(
                   例如 Discord 客製化介面、Steam UI、遊戲、WebGL 畫布)
         grid_rows: 網格列數，僅 use_grid=True 生效 (預設 10，範圍 3~20)
         grid_cols: 網格欄數，僅 use_grid=True 生效 (預設 10，範圍 3~20)
+        text_list_max_items: text_list 最多列幾個元素 (預設 30，視覺模式建議設 0)。
+                            字元總長度另有硬上限 (MAX_TEXT_LIST_CHARS)。
 
     Returns:
         dict 結構:
         {
             "mode": "uia" | "grid" | "empty",
             "element_count": int,
-            "text_list": str,             # 文字化 UI 清單 (給無視覺模型閱讀)
-            "coord_map": dict | None,     # UIA 模式：{"0": [x, y], "1": [x, y], ...}
-            "grid_map":  dict | None,     # Grid 模式：{"A1": [x, y], "B1": [x, y], ...}
+            "text_list": str,                  # 文字化 UI 清單 (給無視覺模型)
+            "available_ids": list[str] | None, # UIA 模式：可用 target_id 清單 (e.g. ["0","1","2"])
+                                                # 座標不直接回傳，內部快取供 execute_exact_action 使用
+            "available_grid_ids": list[str] | None, # Grid 模式：可用 grid_id 清單 (e.g. ["A1","A2",...])
             "screenshot_base64": str | None,   # 僅 include_screenshot=True 時有值
             "screenshot_format": "jpeg",
             "screenshot_path": str | None,     # 截圖本地路徑 (供除錯)
@@ -227,7 +241,9 @@ def get_screen_state(
                 "element_count": len(grid_map),
                 "text_list": text_list,
                 "coord_map": None,
-                "grid_map": {k: list(v) for k, v in grid_map.items()},
+                "available_ids": None,
+                "available_grid_ids": list(grid_map.keys()),  # 只給 id，不給座標
+                "grid_map": None,  # ContextGuard: 保留 key 為 None 以維持 schema 穩定
                 "screenshot_base64": None,
                 "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),
@@ -249,7 +265,9 @@ def get_screen_state(
                         "建議：再用 use_grid=True 重新掃描一次 (網格模式)。"
                     ),
                     "coord_map": None,
+                    "available_ids": None,
                     "grid_map": None,
+                    "available_grid_ids": None,
                     "screenshot_base64": None,
                     "screenshot_format": "jpeg",
                     "screenshot_path": None,
@@ -265,7 +283,28 @@ def get_screen_state(
             _state["last_screenshot_path"] = image_path
 
             # 文字化清單 (給無視覺模型判斷用)
-            text_list = engine.build_element_text_list(elements)
+            # ContextGuard: 透過 text_list_max_items 讓 agent 自控長度
+            # text_list_max_items=0 表示完全跳過 (視覺模式不需要)
+            if text_list_max_items > 0:
+                text_list = engine.build_element_text_list(
+                    elements, max_items=text_list_max_items
+                )
+            else:
+                # 視覺模式：只給視窗總覽，不列元素細節
+                all_windows = (
+                    elements[0].get("_all_windows", []) if elements else []
+                )
+                if all_windows:
+                    text_list = (
+                        f"[畫面上偵測到的視窗] {' | '.join(all_windows)}\n"
+                        f"(視覺模式：略過 {len(elements)} 個元素細節，"
+                        f"請直接看截圖)"
+                    )
+                else:
+                    text_list = (
+                        f"(視覺模式：偵測到 {len(elements)} 個元素，"
+                        f"請直接看截圖)"
+                    )
             _state["last_text_list"] = text_list
 
             logger.info(
@@ -276,10 +315,12 @@ def get_screen_state(
                 "mode": "uia",
                 "element_count": len(elements),
                 "text_list": text_list,
-                "coord_map": {
-                    str(k): [int(v[0]), int(v[1])] for k, v in coord_map.items()
-                },
+                # ⚠️ ContextGuard: 不回傳完整座標表，只回傳 ID 清單
+                # 座標仍存在 _state 內，供 execute_exact_action 用
+                "coord_map": None,
+                "available_ids": [str(k) for k in coord_map.keys()],
                 "grid_map": None,
+                "available_grid_ids": None,
                 "screenshot_base64": None,
                 "screenshot_format": "jpeg",
                 "screenshot_path": os.path.abspath(image_path),

@@ -51,8 +51,8 @@ expect_true(isinstance(engine.MAX_WALK_DEPTH, int) and engine.MAX_WALK_DEPTH > 0
 # Part 2：截圖壓縮設定檢查
 # ============================================================
 print("\n=== SS-1: 截圖壓縮常數已設定 ===")
-expect(mcp_server.SCREENSHOT_MAX_WIDTH, 1920, "最大寬度 = 1920")
-expect(mcp_server.SCREENSHOT_JPEG_QUALITY, 70, "JPEG quality = 70")
+expect(mcp_server.SCREENSHOT_MAX_WIDTH, 1280, "最大寬度 = 1280")
+expect(mcp_server.SCREENSHOT_JPEG_QUALITY, 60, "JPEG quality = 60")
 
 print("\n=== SS-2: screenshot_format 已改為 jpeg ===")
 expect(mcp_server._encode_image_to_base64.__doc__, mcp_server._encode_image_to_base64.__doc__,
@@ -92,11 +92,11 @@ expect_true(raw[:2] == b"\xff\xd8",
 # 還原成圖片確認仍可讀
 img_back = Image.open(io.BytesIO(raw))
 expect(img_back.format, "JPEG", "解碼後是 JPEG 格式")
-expect(img_back.width, 1920, "寬度已縮放至 1920")
-expect_true(img_back.height == 1080, f"高度等比例縮放 (1920x1080)，實際 {img_back.height}")
+expect(img_back.width, 1280, "寬度已縮放至 1280")
+expect_true(img_back.height == 720, f"高度等比例縮放 (1280x720)，實際 {img_back.height}")
 
 
-print("\n=== SS-4: 小於 1920 寬的截圖不縮放 ===")
+print("\n=== SS-4: 小於 1280 寬的截圖不縮放 ===")
 img_small = Image.new("RGB", (1280, 720), "blue")
 test_path_small = DATA_DIR / "test_small_screen.png"
 img_small.save(test_path_small)

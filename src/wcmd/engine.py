@@ -152,6 +152,9 @@ CALLOUT_BORDER_WIDTH = 2         # callout 標籤外框線寬
 # 把 UIA 抓到的元素名稱 (例如「確定」「新增」) 整理成文字清單，
 # 一起塞進 Prompt，讓 AI 用「語意」而不是「純視覺」判斷。
 TEXT_LIST_MAX_ITEMS = 60         # 最多列出幾個元素 (避免 Prompt 過長)
+# 字元總長度硬上限 (ContextGuard 雙保險)
+# 約 3000 字 ≈ 750 token，符合「文字清單應小於 1K token」原則
+TEXT_LIST_MAX_CHARS = 3000
 
 # 座標表 JSON 輸出路徑 (由 config 統一管理，預設 ~/.wcmd/coord_map.json)
 COORD_MAP_PATH = config.COORD_MAP_PATH
@@ -834,6 +837,7 @@ def encode_image_to_base64(image_path: str) -> str:
 def build_element_text_list(
     elements: List[Dict[str, Any]],
     max_items: int = TEXT_LIST_MAX_ITEMS,
+    max_chars: int = TEXT_LIST_MAX_CHARS,
 ) -> str:
     """
     把 UIA 抓到的元素整理成簡潔的文字清單，
@@ -843,6 +847,12 @@ def build_element_text_list(
     每個元素前綴會帶上「[視窗名稱]」標籤，這對於「多視窗都有同名元素」
     (例如多個視窗的關閉 X 按鈕) 是必要的判斷依據。
 
+    雙重截斷保護 (ContextGuard)：
+      - max_items: 最多列 N 個元素 (預設 60)
+      - max_chars: 字元總長度上限 (預設 3000)
+        → 達到任一上限就停止，並附「... 截斷」訊息
+        → 約 3000 字 ≈ 750 token，避免 context 爆炸
+
     範例輸出：
         [畫面上偵測到的視窗] 工作管理員, Windows PowerShell, 檔案總管
 
@@ -851,6 +861,7 @@ def build_element_text_list(
         ...
         [30] [工作管理員] Button '' @(1200, 80)        ← 工作管理員的 X
         [40] [Windows PowerShell] Button '' @(1206, 80) ← PowerShell 的 X
+        ... (略過 996 個，編號 ≥ 60)
     """
     # 收集所有出現過的視窗 (從第一個元素上的 _all_windows 拿)
     all_windows: List[str] = []
@@ -863,26 +874,43 @@ def build_element_text_list(
         lines.append(f"[畫面上偵測到的視窗] {' | '.join(all_windows)}")
         lines.append("")
 
-    # (2) 元素清單
+    # (2) 元素清單 (雙重上限保護：items + chars)
+    actual_max_items = min(max_items, len(elements))
     lines.append(
-        f"可點擊元素清單 (共 {len(elements)} 個，這裡列前 "
-        f"{min(len(elements), max_items)} 個)："
+        f"可點擊元素清單 (共 {len(elements)} 個，這裡列前 {actual_max_items} 個)："
     )
-    for elem in elements[:max_items]:
+
+    truncated_by_items = 0
+    truncated_by_chars = False
+    for elem in elements[:actual_max_items]:
         ctype_short = elem["control_type"].replace("Control", "")
         name = (elem.get("name") or "").strip().replace("\n", " ")[:40]
         wname = elem.get("window_name", "(未知視窗)")
         cx, cy = elem["center"]
         if name:
-            lines.append(
+            line = (
                 f"  [{elem['id']:>3}] [{wname}] {ctype_short} '{name}' @({cx}, {cy})"
             )
         else:
-            lines.append(
+            line = (
                 f"  [{elem['id']:>3}] [{wname}] {ctype_short} (無文字) @({cx}, {cy})"
             )
-    if len(elements) > max_items:
-        lines.append(f"  ... (略過 {len(elements) - max_items} 個，編號 ≥ {max_items})")
+
+        # 字元長度檢查 (在加入 lines 前先預估)
+        projected = "\n".join(lines + [line])
+        if len(projected) > max_chars:
+            truncated_by_chars = True
+            break
+
+        lines.append(line)
+
+    if len(elements) > actual_max_items:
+        truncated_by_items = len(elements) - actual_max_items
+        lines.append(f"  ... (略過 {truncated_by_items} 個，編號 ≥ {actual_max_items})")
+    elif truncated_by_chars:
+        lines.append(
+            f"  ... (字元數達 {max_chars} 上限，後續省略；如需更多元素請提高 max_chars)"
+        )
 
     return "\n".join(lines)
 
