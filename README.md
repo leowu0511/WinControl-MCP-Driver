@@ -177,9 +177,84 @@ export WCMD_VISION_MODEL="qwen3.7-plus"
 
 | 元凶 | 預設行為 | 防護機制 |
 |---|---|---|
-| **Base64 截圖過大** (PNG 數 MB) | 1920px JPEG q70 | `_encode_compressed_screenshot()`：>1920px 自動縮放、轉 JPEG quality=70。**4K 截圖 Base64 從 ~10MB 降到 ~250KB，省 95% token** |
+| **Base64 截圖過大** (PNG 數 MB) | 1280px JPEG q60 | `_encode_compressed_screenshot()`：>1280px 自動縮放、轉 JPEG quality=60。**4K 截圖 Base64 從 ~10MB 降到 ~80KB，省 99% token** |
 | **UIA 抓整個桌面** (幾千元素) | 前景 + 彈出層 + maxDepth=5 | **Smart Pruning 兩道關卡**：① 過濾頂層視窗只留「前景 + 看得見的 MenuControl/WindowControl/PaneControl」② 每個視窗只走訪 depth ≤ 5。**掃描時間 < 0.1s，元素數量 90% 縮減** |
 | **text_list 直接回傳 List[Dict]** | 永遠是 String | `build_element_text_list(max_items=60)` 處理過的純文字，AI 直接讀 |
+
+---
+
+## 🔄 更新與版本檢查
+
+> **🤖 給 AI Agent**：開新對話、接手別人的工作、或工具行為怪怪時，**先跑一次版本檢查**。
+
+### 1️⃣ 查目前已安裝版本
+
+```bash
+# 方法 A：用 CLI
+wcmd-mcp --version
+
+# 方法 B：用 Python
+python -c "import wcmd; print(wcmd.__version__)"
+```
+
+### 2️⃣ 查 PyPI 最新版 + 自動升級
+
+**PowerShell (Windows / 推薦)**：
+
+```powershell
+# 查目前版本
+$current = (python -c "import wcmd; print(wcmd.__version__)" 2>$null)
+
+# 查 PyPI 最新版 (不用安裝)
+$latest = (Invoke-RestMethod "https://pypi.org/pypi/wcmd/json").info.version
+
+# 比較 + 提示
+if ([version]$current -lt [version]$latest) {
+    Write-Host "⚠️  WCMD $current → $latest 可更新" -ForegroundColor Yellow
+    Write-Host "    升級指令：pip install --upgrade wcmd" -ForegroundColor Yellow
+    Write-Host "    更新內容：https://github.com/leowu0511/WinControl-MCP-Driver/releases" -ForegroundColor Yellow
+} else {
+    Write-Host "✅ WCMD $current 已是最新版" -ForegroundColor Green
+}
+```
+
+**Bash (Linux / macOS / WSL)**：
+
+```bash
+current=$(python -c "import wcmd; print(wcmd.__version__)" 2>/dev/null)
+latest=$(curl -s https://pypi.org/pypi/wcmd/json | python -c "import sys,json; print(json.load(sys.stdin)['info']['version'])")
+if [ "$current" != "$latest" ]; then
+    echo "⚠️  WCMD $current → $latest 可更新"
+    echo "    升級指令：pip install --upgrade wcmd"
+else
+    echo "✅ WCMD $current 已是最新版"
+fi
+```
+
+### 3️⃣ 一鍵升級
+
+```bash
+pip install --upgrade wcmd
+```
+
+**重啟你的 MCP Client** (Claude Desktop / Cursor / Roo Code 等) 才會生效。
+
+### 4️⃣ 看這版改了什麼 (Changelog)
+
+* **GitHub Releases**：[https://github.com/leowu0511/WinControl-MCP-Driver/releases](https://github.com/leowu0511/WinControl-MCP-Driver/releases)
+  * 每版有「✨ 新功能 / 🐛 修 bug / ⚠️ 破壞性變更」分區
+* **PyPI History**：[https://pypi.org/project/wcmd/#history](https://pypi.org/project/wcmd/#history)
+* **完整 Commit Log**：[https://github.com/leowu0511/WinControl-MCP-Driver/commits/main](https://github.com/leowu0511/WinControl-MCP-Driver/commits/main)
+
+### 💡 升級常見問題
+
+| 問題 | 解法 |
+|---|---|
+| 升級後指令還是舊版 | 重啟 MCP Client；或檢查 `which wcmd-mcp` 指向的 Python 是不是你裝的那個 |
+| 升級時 `WinError 5` | 套件已安裝在系統 Python → 改用 venv 安裝 ([Q1 說明](#q1-winerror-5-拒絕存取-安裝時)) |
+| 想鎖定版本不自動升級 | `pip install wcmd==0.1.0` 指定版本號 |
+| 升級後 API Key 掉了 | API Key 存在 MCP config 的 `env` 區塊，**不在套件裡**，不會受影響 |
+| 想完全乾淨重裝 | `pip uninstall wcmd` → 刪 `~/.wcmd/` → `pip install wcmd` |
 
 ---
 
