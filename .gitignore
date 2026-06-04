@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# WCMD runtime data
+# (注意：不要 commit 任何真實的 marked_screen.png 或 coord_map.json 範例)
+*.marked_screen.png
+# 但保留 .gitkeep 讓空目錄能被追蹤
+!examples/.gitkeep
+
+# 環境變數與機密 (絕對不要 commit!)
+.env
+.env.local
+*.secret
+api_key.txt
+
+# 系統檔
+Thumbs.db
+desktop.ini

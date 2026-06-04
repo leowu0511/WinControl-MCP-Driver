@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "WCMD"
+version = "0.1.0"
+description = "WinControl MCP Driver — 讓 AI Agent 用自然語言操控 Windows UI 的 MCP 伺服器"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "leowu0511", email = "leo.wu0511@example.com" },
+]
+keywords = ["mcp", "ai-agent", "windows", "ui-automation", "vision", "claude", "roo-code", "cursor", "cline"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "pyautogui>=0.9.53",
+    "uiautomation>=2.0.15",
+    "Pillow>=10.0.0",
+    "openai>=1.0.0",
+    "anthropic>=0.40.0",
+    "pyperclip>=1.8.2",
+    "mcp>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/leowu0511/WinControl-MCP-Driver"
+Repository = "https://github.com/leowu0511/WinControl-MCP-Driver.git"
+Issues = "https://github.com/leowu0511/WinControl-MCP-Driver/issues"
+
+[project.scripts]
+# 這行讓 `pip install` 後可以直接用 `wcmd-mcp` 指令啟動
+wcmd-mcp = "wcmd.server:main"
+# 也提供 CLI 模式給開發者除錯
+wcmd-cli = "wcmd.engine:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["wcmd*"]
+
+[tool.setuptools.package-data]
+wcmd = ["py.typed"]
+
+[tool.setuptools.package-dir]
+"" = "src"

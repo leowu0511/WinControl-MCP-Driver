@@ -1,0 +1,13 @@
+{
+  "_comment_": "Claude Code (Anthropic CLI) 的 MCP 設定範本。放到 ~/.claude.json",
+  "mcpServers": {
+    "wcmd": {
+      "command": "wcmd-mcp",
+      "env": {
+        "WCMD_VISION_API_KEY": "REPLACE_WITH_YOUR_API_KEY",
+        "WCMD_VISION_BASE_URL": "https://opencode.ai/zen/go",
+        "WCMD_VISION_MODEL": "qwen3.7-plus"
+      }
+    }
+  }
+}

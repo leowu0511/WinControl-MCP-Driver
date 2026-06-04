@@ -1,0 +1,20 @@
+{
+  "_comment_": "Roo Code / Cline 的 MCP 設定 (兩者格式相同)。",
+  "_usage_": [
+    "全域: VS Code → Roo Code 面板 ⚙️ → MCP Servers → Edit Global MCP",
+    "      或 VS Code → Cline 齒輪 → MCP Servers → Configure MCP Servers",
+    "專案: 放在 <project_root>/.roo/mcp.json (Roo Code 會自動載入)"
+  ],
+  "mcpServers": {
+    "wcmd": {
+      "command": "wcmd-mcp",
+      "env": {
+        "WCMD_VISION_API_KEY": "REPLACE_WITH_YOUR_API_KEY",
+        "WCMD_VISION_BASE_URL": "https://opencode.ai/zen/go",
+        "WCMD_VISION_MODEL": "qwen3.7-plus"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
