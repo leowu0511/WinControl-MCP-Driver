@@ -52,6 +52,12 @@ dev = [
     "ruff>=0.1.0",
 ]
 
+[tool.pytest.ini_options]
+# 明確告訴 pytest 在哪裡找測試、source code 在哪裡
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --tb=short"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["wcmd*"]
