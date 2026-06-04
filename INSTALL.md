@@ -39,6 +39,11 @@ python -c "import wcmd; print(wcmd.__version__)"
 
 選擇一個供應商（推薦 [OpenCode Go](https://opencode.ai/zen)）並取得 API Key。
 
+> 💡 **還沒帳號？** 用邀請連結註冊 OpenCode Go，你我都各得 **$5** 額度：
+> 👉 **<https://opencode.ai/go?ref=X0VQPG489J>**
+>
+> 為什麼推薦 OpenCode Go：預設支援 Qwen3.7 Plus、Anthropic 格式（與本套件預設相符）、額度比 OpenAI 官方便宜 5~10 倍。
+
 ---
 
 ## Claude Desktop
