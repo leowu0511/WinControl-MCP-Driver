@@ -838,6 +838,7 @@ def build_element_text_list(
     elements: List[Dict[str, Any]],
     max_items: int = TEXT_LIST_MAX_ITEMS,
     max_chars: int = TEXT_LIST_MAX_CHARS,
+    include_coords: bool = False,
 ) -> str:
     """
     把 UIA 抓到的元素整理成簡潔的文字清單，
@@ -853,14 +854,19 @@ def build_element_text_list(
         → 達到任一上限就停止，並附「... 截斷」訊息
         → 約 3000 字 ≈ 750 token，避免 context 爆炸
 
+    include_coords 參數 (預設 False)：
+      - False: 純文字模式，省 12 字/行 (60 行省 720 字 ≈ 180 token)
+      - True:  需要看座標時開啟 (例如除錯)
+      - Agent 點擊用 target_id 不用座標，所以預設關閉
+
     範例輸出：
         [畫面上偵測到的視窗] 工作管理員, Windows PowerShell, 檔案總管
 
         可點擊元素清單 (共 1056 個，這裡列前 60 個)：
-        [0] [工作管理員] Button '處理程序' @(100, 200)
+        [0] [工作管理員] Button '處理程序'
         ...
-        [30] [工作管理員] Button '' @(1200, 80)        ← 工作管理員的 X
-        [40] [Windows PowerShell] Button '' @(1206, 80) ← PowerShell 的 X
+        [30] [工作管理員] Button ''              ← 工作管理員的 X
+        [40] [Windows PowerShell] Button ''      ← PowerShell 的 X
         ... (略過 996 個，編號 ≥ 60)
     """
     # 收集所有出現過的視窗 (從第一個元素上的 _all_windows 拿)
@@ -887,13 +893,17 @@ def build_element_text_list(
         name = (elem.get("name") or "").strip().replace("\n", " ")[:40]
         wname = elem.get("window_name", "(未知視窗)")
         cx, cy = elem["center"]
+        if include_coords:
+            coord_suffix = f" @({cx}, {cy})"
+        else:
+            coord_suffix = ""
         if name:
             line = (
-                f"  [{elem['id']:>3}] [{wname}] {ctype_short} '{name}' @({cx}, {cy})"
+                f"  [{elem['id']:>3}] [{wname}] {ctype_short} '{name}'{coord_suffix}"
             )
         else:
             line = (
-                f"  [{elem['id']:>3}] [{wname}] {ctype_short} (無文字) @({cx}, {cy})"
+                f"  [{elem['id']:>3}] [{wname}] {ctype_short} (無文字){coord_suffix}"
             )
 
         # 字元長度檢查 (在加入 lines 前先預估)

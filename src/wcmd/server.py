@@ -118,16 +118,22 @@ SCREENSHOT_JPEG_QUALITY: int = 60
 
 
 def _encode_compressed_screenshot(image_path: str) -> str:
-    """讀取截圖 → 縮放 (必要時) → JPEG 壓縮 → 回傳 Base64 字串。
+    """讀取截圖 → 無條件縮到目標寬度 → JPEG 壓縮 → 回傳 Base64 字串。
 
     為什麼不用原本的 PNG 編碼？
       - 1920x1080 PNG ≈ 3~5 MB，Base64 ≈ 4~7 MB → 數十萬 token
       - 同畫面 JPEG q70 ≈ 200~400 KB，Base64 ≈ 300~500 KB → 數萬 token
       - 視覺品質對 AI 識別紅框+編號無差別 (都是純色幾何)
+
+    為什麼「無條件」縮到 1280 (不再只 > 1280 才縮)？
+      - AI 看紅框數字，960px 就夠，1280px 是保險值
+      - 原 1920 螢幕縮到 1280 面積比 = 0.44，base64 從 ~500KB → ~150KB
+      - 配合 quality=60，可從 ~130k token → ~35k token (省 70%+)
     """
     with Image.open(image_path) as img:
-        # 1) 過寬就縮放 (4K 螢幕或更高解析度)
-        if img.width > SCREENSHOT_MAX_WIDTH:
+        # 1) 無條件縮到目標寬度 (不管原圖多大，統統壓到 1280)
+        #    寬度已經是 1280 的圖不動 (省時間)
+        if img.width != SCREENSHOT_MAX_WIDTH:
             new_w = SCREENSHOT_MAX_WIDTH
             new_h = int(img.height * (new_w / img.width))
             img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
@@ -199,10 +205,11 @@ def get_screen_state(
         {
             "mode": "uia" | "grid" | "empty",
             "element_count": int,
-            "text_list": str,                  # 文字化 UI 清單 (給無視覺模型)
-            "available_ids": list[str] | None, # UIA 模式：可用 target_id 清單 (e.g. ["0","1","2"])
+            "text_list": str | None,           # 文字化 UI 清單 (給無視覺模型)
+                                              # include_screenshot=True 時為 None (避免重複)
+            "available_ids": str | None,       # UIA 模式: 緊湊 ID 範圍字串 (e.g. "0~59")
                                                 # 座標不直接回傳，內部快取供 execute_exact_action 使用
-            "available_grid_ids": list[str] | None, # Grid 模式：可用 grid_id 清單 (e.g. ["A1","A2",...])
+            "available_grid_ids": str | None,  # Grid 模式: 緊湊 ID 範圍字串 (e.g. "A1~J10")
             "screenshot_base64": str | None,   # 僅 include_screenshot=True 時有值
             "screenshot_format": "jpeg",
             "screenshot_path": str | None,     # 截圖本地路徑 (供除錯)
@@ -239,10 +246,14 @@ def get_screen_state(
             result = {
                 "mode": "grid",
                 "element_count": len(grid_map),
-                "text_list": text_list,
+                # 互斥: 有截圖時不給 text_list (避免 context 重複)
+                "text_list": None if include_screenshot else text_list,
                 "coord_map": None,
                 "available_ids": None,
-                "available_grid_ids": list(grid_map.keys()),  # 只給 id，不給座標
+                # 緊湊 ID 範圍字串: "A1~J10" 比 list 短超多
+                "available_grid_ids": (
+                    f"A1~{engine.GRID_COL_LETTERS[cols-1]}{rows}" if grid_map else None
+                ),
                 "grid_map": None,  # ContextGuard: 保留 key 為 None 以維持 schema 穩定
                 "screenshot_base64": None,
                 "screenshot_format": "jpeg",
@@ -314,11 +325,12 @@ def get_screen_state(
             result = {
                 "mode": "uia",
                 "element_count": len(elements),
-                "text_list": text_list,
-                # ⚠️ ContextGuard: 不回傳完整座標表，只回傳 ID 清單
-                # 座標仍存在 _state 內，供 execute_exact_action 用
+                # 互斥: 有截圖時不給 text_list (避免 context 重複)
+                "text_list": None if include_screenshot else text_list,
+                # ⚠️ ContextGuard: 不回傳完整座標表，只給緊湊 ID 範圍字串
+                # 座標仍存在 _state 內，供 execute_exact_action 使用
                 "coord_map": None,
-                "available_ids": [str(k) for k in coord_map.keys()],
+                "available_ids": f"0~{len(coord_map)-1}" if coord_map else None,
                 "grid_map": None,
                 "available_grid_ids": None,
                 "screenshot_base64": None,

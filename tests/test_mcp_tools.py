@@ -42,9 +42,9 @@ try:
     expect(r["mode"], "uia", "UIA 模式")
     expect(r["element_count"], 2, "抓到 2 個元素")
     expect("確定" in r["text_list"], True, "text_list 包含元素名稱")
-    # ContextGuard: 不再回傳完整 coord_map，只回 available_ids
+    # ContextGuard: 不再回傳完整 coord_map，只回緊湊 ID 範圍字串
     expect(r["coord_map"], None, "coord_map 應為 None (ContextGuard 移除)")
-    expect(r["available_ids"], ["0", "1"], "available_ids = ['0', '1']")
+    expect(r["available_ids"], "0~1", "available_ids = '0~1'")
     expect(r["available_grid_ids"], None, "UIA 模式 available_grid_ids 應為 None")
     expect(r["grid_map"], None, "UIA 模式 grid_map 應為 None")
     expect(r["screenshot_base64"], None, "未要求時 screenshot_base64 應為 None")
@@ -84,10 +84,9 @@ try:
     r = mcp_server.get_screen_state(use_grid=True, grid_rows=5, grid_cols=8)
     expect(r["mode"], "grid", "Grid 模式")
     expect(r["element_count"], 40, "5*8=40 個格子")
-    # ContextGuard: 不回傳 grid_map 座標表，只回 ID 清單
+    # ContextGuard: 不回傳 grid_map 座標表，只回緊湊 ID 範圍字串
     expect(r["grid_map"], None, "grid_map 應為 None (ContextGuard 移除)")
-    expect("A1" in r["available_grid_ids"], True, "available_grid_ids 含 A1")
-    expect(len(r["available_grid_ids"]), 40, "available_grid_ids 應有 40 個")
+    expect(r["available_grid_ids"], "A1~H5", "available_grid_ids = 'A1~H5' (5 列 8 欄 = H)")
     expect(r["coord_map"], None, "Grid 模式 coord_map=None")
     expect(mcp_server._state["mode"], "grid", "state.mode=grid")
     expect(mcp_server._state["grid_map"]["E5"], (450, 360), "state.grid_map 保留座標")
