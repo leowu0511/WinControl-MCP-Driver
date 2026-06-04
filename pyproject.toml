@@ -9,7 +9,7 @@ description = "WinControl MCP Driver — 讓 AI Agent 用自然語言操控 Wind
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "leowu0511", email = "leo.wu0511@example.com" },
+    { name = "leowu0511" },
 ]
 keywords = ["mcp", "ai-agent", "windows", "ui-automation", "vision", "claude", "roo-code", "cursor", "cline"]
 classifiers = [

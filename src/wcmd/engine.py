@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ============================================================================
- Vision-Clicker 後端引擎 (agent_engine.py)
+ WCMD 核心引擎 (wcmd.engine)
 ============================================================================
  整體功能 (階段一 + 階段二 + 階段 2.6)：
    1. 使用 Windows UI Automation (uiautomation) 抓取目前桌面所有可點擊的 UI 元素。
@@ -1813,9 +1813,9 @@ def execute_action(
 def parse_cli_args() -> argparse.Namespace:
     """解析命令列參數，回傳 argparse.Namespace。"""
     parser = argparse.ArgumentParser(
-        prog="agent_engine.py",
+        prog="wcmd-cli",
         description=(
-            "Vision-Clicker：透過 Vision Model + Set-of-Mark 標記，"
+            "WCMD：透過 Vision Model + Set-of-Mark 標記，"
             "自動點擊 Windows UI 元素。"
         ),
     )
@@ -2044,7 +2044,7 @@ def main() -> None:
 
     # 退出碼約定
     if result["status"] == "ok":
-        print("\n[全部完成] Vision-Clicker 流程已成功執行。")
+        print("\n[全部完成] WCMD 流程已成功執行。")
         sys.exit(EXIT_OK)
     elif result["status"] == "not_found":
         print("\n[結束] AI 表示畫面上找不到可完成任務的元素。")

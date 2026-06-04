@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ============================================================================
- Vision-Clicker MCP Server (mcp_server.py)
+ WCMD MCP Server (wcmd.server)
 ============================================================================
  為 AI Agent 提供「視覺操控 Windows UI」的能力。
  採用「能力分層 (Capability-Tiered)」設計，提供 3 個 MCP Tools：
@@ -27,9 +27,14 @@
  Claude Desktop / Cursor / Cline 設定範例：
      {
        "mcpServers": {
-         "vision-clicker": {
-           "command": "C:/.../venv/Scripts/python.exe",
-           "args": ["C:/.../mcp_server.py"]
+         "wcmd": {
+           "command": "wcmd-mcp",
+           "env": {
+             "WCMD_VISION_API_KEY": "sk-xxxxxxxxxxxxxx"
+           }
+         }
+       }
+     }
          }
        }
      }
@@ -52,7 +57,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     stream=sys.stderr,
 )
-logger = logging.getLogger("vision-clicker-mcp")
+logger = logging.getLogger("wcmd-mcp")
 
 # MCP 套件 (官方 SDK)
 try:
@@ -102,7 +107,7 @@ def _encode_image_to_base64(image_path: str) -> str:
 # ============================================================
 # 建立 MCP Server
 # ============================================================
-mcp = FastMCP("vision-clicker")
+mcp = FastMCP("wcmd")
 
 
 # ============================================================

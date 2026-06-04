@@ -125,6 +125,7 @@ Vision Model 可能誤判為「使用者意圖」而執行。
 
 ## 漏洞回報
 
-發現安全漏洞請 email 至：<leo.wu0511@example.com>
+發現安全漏洞請到 GitHub Issues 開 Private Security Advisory：
+<https://github.com/leowu0511/WinControl-MCP-Driver/security/advisories/new>
 
 請**不要**在 GitHub Issues 公開揭露漏洞，會給攻擊者時間。
