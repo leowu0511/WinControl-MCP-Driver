@@ -397,7 +397,7 @@ def execute_exact_action(
         dry_run:    若為 True，僅預演不實際操作
 
     Returns:
-        dict: {"status", "action", "message", "coord"}
+        dict: {"status", "action", "message"}
     """
     try:
         # 檢查狀態
@@ -449,6 +449,8 @@ def execute_exact_action(
             f"[Tool 2] execute_exact_action: action={action}, "
             f"status={result.get('status')}, coord={result.get('coord')}"
         )
+        # ContextGuard: 像素座標對 agent 無用，log 留給人看，response 拿掉
+        result.pop("coord", None)
         return result
 
     except Exception as exc:
@@ -487,7 +489,7 @@ def execute_semantic_intent(
         force_grid:  強制走 Grid 模式 (略過 UIA 抓元素)
 
     Returns:
-        dict: {"status", "action", "message", "coord", "ai_reason"}
+        dict: {"status", "action", "message", "ai_reason", "mode_used"}
     """
     try:
         # 檢查 API Key (優先順序：config → engine 全域常數 → 環境變數)
@@ -560,6 +562,8 @@ def execute_semantic_intent(
         # 補上 AI 判斷理由
         result["ai_reason"] = action_dict.get("reason", "")
         result["mode_used"] = "grid" if use_grid_mode else "uia"
+        # ContextGuard: 像素座標對 agent 無用，pop 掉
+        result.pop("coord", None)
         logger.info(
             f"[Tool 3] 完成: status={result.get('status')}, "
             f"action={result.get('action')}"

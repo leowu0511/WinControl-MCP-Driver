@@ -154,7 +154,7 @@ mcp_server._state["coord_map"] = {0: (10, 10), 1: (100, 100), 2: (200, 200)}
 mcp_server._state["grid_map"] = {}
 r = mcp_server.execute_exact_action(action="click", target_id=1, dry_run=True)
 expect(r["status"], "ok", "click 成功")
-expect(r["coord"], (100, 100), "coord = (100, 100)")
+expect(r["coord"], None, "coord 被移除 (ContextGuard，agent 不需像素座標)")
 
 
 print("\n=== T2-3: execute_exact_action (UIA 模式 hotkey) ===")
@@ -169,7 +169,7 @@ mcp_server._state["grid_map"] = {"A1": (50, 50), "B2": (150, 150), "C3": (250, 2
 mcp_server._state["coord_map"] = {}
 r = mcp_server.execute_exact_action(action="click", grid_id="B2", dry_run=True)
 expect(r["status"], "ok", "grid click 成功")
-expect(r["coord"], (150, 150), "B2 座標")
+expect(r["coord"], None, "coord 被移除 (ContextGuard)")
 
 
 print("\n=== T2-5: execute_exact_action (UIA 模式但給 grid_id → 找不到) ===")
@@ -200,7 +200,7 @@ r = mcp_server.execute_exact_action(
     action="drag", start_id=0, end_id=5, dry_run=True
 )
 expect(r["status"], "ok", "drag 成功")
-expect(r["coord"], (500, 500), "end 座標")
+expect(r["coord"], None, "drag coord 被移除 (ContextGuard)")
 
 
 print("\n=== T2-8: execute_exact_action (type Unicode 中文) ===")
@@ -270,7 +270,7 @@ try:
     r = mcp_server.execute_semantic_intent("點中間", dry_run=True)
     expect(r["status"], "ok", "Grid 降級 click 成功")
     expect(r["action"], "click", "action=click")
-    expect(r["coord"], (150, 150), "B2 座標")
+    expect(r["coord"], None, "coord 被移除 (ContextGuard)")
     expect(r["mode_used"], "grid", "記錄使用 grid 模式")
     expect(mcp_server._state["mode"], "grid", "state 更新為 grid")
 finally:
@@ -345,8 +345,8 @@ try:
         action="click", target_id=5, dry_run=True
     )
     expect(result["status"], "ok", "點擊 Btn5 成功")
-    expect(result["coord"], (500, 100), "Btn5 座標")
-    print(f"    (Agent 決定 → click target 5 → 座標 {result['coord']})")
+    expect(result["coord"], None, "coord 被移除 (ContextGuard)")
+    print(f"    (Agent 決定 → click target 5 → 像素座標已在 MCP log，不進 context)")
 
     # Step 3: 然後按 Ctrl+S
     result2 = mcp_server.execute_exact_action(action="hotkey", keys="ctrl+s", dry_run=True)

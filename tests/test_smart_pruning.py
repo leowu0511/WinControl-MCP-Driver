@@ -141,7 +141,41 @@ print(f"    壓縮後省下約 95%+ context token")
 
 
 # ============================================================
-# Part 4：清理測試檔
+# Part 4：engine.encode_image_compressed 測試 (Tool 3 截圖)
+# ============================================================
+print("\n=== EC-1: encode_image_compressed 存在且行為正確 ===")
+expect_true(
+    hasattr(engine, "encode_image_compressed"),
+    "engine.encode_image_compressed 函數存在"
+)
+
+# 4K PNG → 壓縮
+b64_v = engine.encode_image_compressed(str(DATA_DIR / "test_realistic_4k.png"))
+raw_v = base64.b64decode(b64_v)
+expect_true(raw_v[:2] == b"\xff\xd8", "EC-1a: 輸出是 JPEG (magic 0xFFD8)")
+img_v = Image.open(io.BytesIO(raw_v))
+expect(img_v.width, 1280, "EC-1b: 4K 縮到 1280")
+expect_true(img_v.height == 720, f"EC-1c: 4K 高度 720 (實際 {img_v.height})")
+expect_true(len(b64_v) / 1024 < 200, f"EC-1d: 4K 壓縮 < 200KB (實際 {len(b64_v)/1024:.1f}KB)")
+
+# 小於 1280 的不縮放
+b64_s = engine.encode_image_compressed(str(test_path_small))
+img_s = Image.open(io.BytesIO(base64.b64decode(b64_s)))
+expect(img_s.width, 1280, "EC-1e: 1280 寬不縮放")
+expect(img_s.height, 720, "EC-1f: 720 高不縮放")
+
+# 對比舊版 encode_image_to_base64 (未壓縮) 的差距
+b64_raw = engine.encode_image_to_base64(str(DATA_DIR / "test_realistic_4k.png"))
+raw_ratio = len(b64_raw) / len(b64_v)
+expect_true(
+    raw_ratio > 2,
+    f"EC-1g: 壓縮版比未壓縮版小至少 2 倍 (實際 {raw_ratio:.1f}x)"
+)
+print(f"    對比: 原始 PNG Base64 {len(b64_raw)/1024:.0f}KB → 壓縮 JPEG {len(b64_v)/1024:.0f}KB ({raw_ratio:.0f}x 小)")
+
+
+# ============================================================
+# Part 5：清理測試檔
 # ============================================================
 print("\n=== Cleanup ===")
 for f in [test_path, test_path_small, DATA_DIR / "test_for_compare.png"]:

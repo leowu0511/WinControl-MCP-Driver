@@ -826,9 +826,54 @@ def encode_image_to_base64(image_path: str) -> str:
     """
     讀取指定路徑的圖片，並回傳 Base64 編碼後的字串。
     此字串會被組合成 data URL (`data:image/png;base64,...`) 傳給 Vision Model。
+
+    ⚠️ 注意：這是「未壓縮」版本，給 CLI 除錯用。
+       生產環境 (ask_vision_model / ask_vision_model_grid) 請用
+       encode_image_compressed() 自動縮放+JPEG，避免 token 爆炸。
     """
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
+
+
+# ============================================================
+# 函數 5b：圖片壓縮編碼 (Vision Model 專用)
+# ============================================================
+def encode_image_compressed(
+    image_path: str,
+    max_width: int = 1280,
+    quality: int = 60,
+) -> str:
+    """
+    截圖壓縮編碼：無條件縮到 max_width + JPEG q60 → Base64 字串。
+
+    為什麼需要這個？
+      原本的 encode_image_to_base64 直接吃原始 PNG：
+        - 1920x1080 PNG ≈ 3-5 MB → Base64 ≈ 4-7 MB → 數十萬 token
+      壓縮後 (1280px JPEG q60)：
+        - 同畫面 ≈ 80 KB → Base64 ≈ 107 KB → ~27k token
+        - 視覺品質對 AI 識別紅框+編號無差別 (純色幾何)
+
+    與 server._encode_compressed_screenshot 邏輯相同；
+    engine 這邊複製一份是因為：
+      - engine 純函式庫，不依賴 server
+      - 兩個呼叫端 (ask_vision_model + ask_vision_model_grid) 都需要
+      - 之後要調參 (例如把 q60 改 q65) 只改一個地方
+    """
+    from PIL import Image as _Image
+    import io as _io
+    with _Image.open(image_path) as img:
+        # 1) 無條件縮到目標寬度
+        if img.width != max_width:
+            new_w = max_width
+            new_h = int(img.height * (new_w / img.width))
+            img = img.resize((new_w, new_h), _Image.Resampling.LANCZOS)
+        # 2) 轉 RGB
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        # 3) JPEG 壓縮
+        buf = _io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
 # ============================================================
@@ -892,8 +937,8 @@ def build_element_text_list(
         ctype_short = elem["control_type"].replace("Control", "")
         name = (elem.get("name") or "").strip().replace("\n", " ")[:40]
         wname = elem.get("window_name", "(未知視窗)")
-        cx, cy = elem["center"]
         if include_coords:
+            cx, cy = elem["center"]
             coord_suffix = f" @({cx}, {cy})"
         else:
             coord_suffix = ""
@@ -1088,8 +1133,9 @@ def ask_vision_model(
     # (B) 將圖片編碼為 Base64
     # --------------------------------------------------------
     # 注意：Anthropic API 只需要純 base64 字串，不需要 data URL 前綴
-    print(f"[編碼中] 將 {image_path} 轉為 Base64...")
-    b64_image = encode_image_to_base64(image_path)
+    # 改用壓縮版 encode_image_compressed (1280px JPEG q60) 避免 token 爆炸
+    print(f"[編碼中] 將 {image_path} 壓縮 (1280px q60) 轉為 Base64...")
+    b64_image = encode_image_compressed(image_path)
 
     # --------------------------------------------------------
     # (C) 建構 Prompt
@@ -1129,7 +1175,7 @@ def ask_vision_model(
     #     圖片只作為空間位置輔助參考。對於非常小的元素 (小圖示按鈕) 特別有效。
     text_list_section = ""
     if elements:
-        text_list_section = build_element_text_list(elements) + "\n\n"
+        text_list_section = build_element_text_list(elements, max_items=30) + "\n\n"
 
     user_prompt = (
         text_list_section
@@ -1173,7 +1219,7 @@ def ask_vision_model(
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/png",
+                                "media_type": "image/jpeg",
                                 "data": b64_image,
                             },
                         },
@@ -1263,8 +1309,9 @@ def ask_vision_model_grid(
     # --------------------------------------------------------
     # (B) 編碼圖片
     # --------------------------------------------------------
-    print(f"[編碼中] 將 {image_path} 轉為 Base64 (grid mode)...")
-    b64_image = encode_image_to_base64(image_path)
+    # 改用壓縮版 encode_image_compressed (1280px JPEG q60)
+    print(f"[編碼中] 將 {image_path} 壓縮 (1280px q60) 轉為 Base64 (grid mode)...")
+    b64_image = encode_image_compressed(image_path)
 
     # --------------------------------------------------------
     # (C) 建構 Prompt (Grid 模式專用)
@@ -1324,7 +1371,7 @@ def ask_vision_model_grid(
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/png",
+                                "media_type": "image/jpeg",
                                 "data": b64_image,
                             },
                         },
