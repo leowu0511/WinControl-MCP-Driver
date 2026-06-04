@@ -820,16 +820,18 @@ def save_coord_map(
 
 
 # ============================================================
-# 函數 5：將圖片檔編碼為 Base64 字串
+# 函數 5：將圖片檔編碼為 Base64 字串 (R7: 改為私有 _encode_image_to_base64_raw)
 # ============================================================
-def encode_image_to_base64(image_path: str) -> str:
+def _encode_image_to_base64_raw(image_path: str) -> str:
     """
-    讀取指定路徑的圖片，並回傳 Base64 編碼後的字串。
-    此字串會被組合成 data URL (`data:image/png;base64,...`) 傳給 Vision Model。
+    讀取指定路徑的圖片，並回傳 Base64 編碼後的字串 (未壓縮 PNG)。
 
-    ⚠️ 注意：這是「未壓縮」版本，給 CLI 除錯用。
-       生產環境 (ask_vision_model / ask_vision_model_grid) 請用
-       encode_image_compressed() 自動縮放+JPEG，避免 token 爆炸。
+    ⚠️ R7 起改為私有 (前綴底線)：
+       - 圖片未壓縮，直接回傳原始 bytes，token 會爆
+       - 生產環境 (ask_vision_model / ask_vision_model_grid) 請用
+         encode_image_compressed() 自動縮放+JPEG
+       - 本函式僅保留給 CLI 除錯或單元測試對比壓縮比用
+       - 請勿在 MCP 工具回傳中呼叫
     """
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -847,7 +849,7 @@ def encode_image_compressed(
     截圖壓縮編碼：無條件縮到 max_width + JPEG q60 → Base64 字串。
 
     為什麼需要這個？
-      原本的 encode_image_to_base64 直接吃原始 PNG：
+      原本的 _encode_image_to_base64_raw 直接吃原始 PNG：
         - 1920x1080 PNG ≈ 3-5 MB → Base64 ≈ 4-7 MB → 數十萬 token
       壓縮後 (1280px JPEG q60)：
         - 同畫面 ≈ 80 KB → Base64 ≈ 107 KB → ~27k token
@@ -1811,10 +1813,12 @@ def execute_action(
                         pyautogui.rightClick()
                 x, y = gx, gy
 
+            # R7: 座標不再進 message / 進 agent context，改寫到 stdout (MCP server log)
+            print(f"[engine] action={action} 像素座標=({x}, {y})")
             return {
                 "status": "ok",
                 "action": action,
-                "message": f"已在座標 ({x}, {y}) 執行{verb_map[action]}",
+                "message": f"已執行{verb_map[action]}",  # R7: 不再附座標 (避免進 agent context)
                 "coord": (x, y),
             }
 
@@ -1871,10 +1875,12 @@ def execute_action(
                 target_pos=target_pos,
                 dry_run=dry_run,
             )
+            # R7: 座標不再進 message
+            print(f"[engine] action=scroll 像素座標={target_pos} (direction={direction}, clicks={clicks})")
             return {
                 "status": "ok",
                 "action": "scroll",
-                "message": f"已捲動 {direction} {clicks} 格 (target={target_pos})",
+                "message": f"已捲動 {direction} {clicks} 格",  # R7: 不再附座標
                 "coord": target_pos,
             }
 
@@ -1911,10 +1917,12 @@ def execute_action(
                 )
 
             execute_drag(from_pos, to_pos, dry_run=dry_run)
+            # R7: 座標不再進 message
+            print(f"[engine] action=drag 起點={from_pos} 終點={to_pos}")
             return {
                 "status": "ok",
                 "action": "drag",
-                "message": f"已從 {from_pos} 拖曳到 {to_pos}",
+                "message": "已完成拖曳",  # R7: 不再附座標
                 "coord": to_pos,
             }
 

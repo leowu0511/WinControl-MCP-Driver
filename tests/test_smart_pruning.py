@@ -166,8 +166,8 @@ img_s = Image.open(io.BytesIO(base64.b64decode(b64_s)))
 expect(img_s.width, 1280, "EC-1e: 1280 寬不縮放")
 expect(img_s.height, 720, "EC-1f: 720 高不縮放")
 
-# 對比舊版 encode_image_to_base64 (未壓縮) 的差距
-b64_raw = engine.encode_image_to_base64(str(DATA_DIR / "test_realistic_4k.png"))
+# 對比舊版 _encode_image_to_base64_raw (未壓縮) 的差距
+b64_raw = engine._encode_image_to_base64_raw(str(DATA_DIR / "test_realistic_4k.png"))
 raw_ratio = len(b64_raw) / len(b64_v)
 expect_true(
     raw_ratio > 2,

@@ -301,6 +301,9 @@ engine.generate_grid_screenshot = lambda rows=10, cols=10: (_fake_img, {"A1": (5
 engine.ask_vision_model_grid = lambda img, instr, rows=10, cols=10: {
     "action": "click", "grid_id": "A1", "reason": "強制 grid"
 }
+# 設假 API Key (T3 才會繼續到 mock)
+saved_api_key_3 = wcmd_config.VISION_API_KEY
+wcmd_config.VISION_API_KEY = "fake-key-for-test"
 try:
     r = mcp_server.execute_semantic_intent("點左上", dry_run=True, force_grid=True)
     expect(r["mode_used"], "grid", "force_grid 應走 grid")
@@ -309,6 +312,7 @@ finally:
     engine.get_clickable_elements = orig_get
     engine.generate_grid_screenshot = orig_grid
     engine.ask_vision_model_grid = orig_ask_grid
+    wcmd_config.VISION_API_KEY = saved_api_key_3
 
 
 print("\n=== T3-4: execute_semantic_intent (Vision Model 失敗) ===")
@@ -379,6 +383,9 @@ orig_ask = engine.ask_vision_model
 engine.get_clickable_elements = lambda: [{"id": 0, "control_type": "B", "name": "OK", "window_name": "D", "center": (100, 100), "bbox": (0, 0, 200, 200)}]
 engine.generate_marked_screenshot = lambda e: {0: (100, 100)}
 engine.ask_vision_model = lambda img, instr, els: {"action": "click", "target_id": 0, "reason": "OK 按鈕"}
+# 設假 API Key (與 T3-1/T3-2/T3-3 一致，本機無 env 時也能跑)
+saved_api_key_int2 = wcmd_config.VISION_API_KEY
+wcmd_config.VISION_API_KEY = "fake-key-for-test"
 try:
     r = mcp_server.execute_semantic_intent("按確定", dry_run=True)
     expect(r["status"], "ok", "Tier 3 成功")
@@ -388,6 +395,7 @@ finally:
     engine.get_clickable_elements = orig_get
     engine.generate_marked_screenshot = orig_gen
     engine.ask_vision_model = orig_ask
+    wcmd_config.VISION_API_KEY = saved_api_key_int2
 
 
 # ============================================================
@@ -406,3 +414,74 @@ finally:
 
 
 print("\nAll MCP Server tests passed!")
+
+
+# ============================================================
+# Part R7：Message 內容不可含像素座標 (ContextGuard)
+# ============================================================
+print("\n=== R7-1: click/scroll/drag message 不應含像素座標 ===")
+reset()
+orig_get = engine.get_clickable_elements
+orig_gen = engine.generate_marked_screenshot
+engine.get_clickable_elements = lambda: [
+    {"id": 0, "control_type": "Button", "name": "OK", "window_name": "App", "center": (123, 456), "bbox": (100, 400, 150, 500)}
+]
+engine.generate_marked_screenshot = lambda e: {0: (123, 456)}
+try:
+    # 先掃描讓 state.coord_map 有資料
+    mcp_server.get_screen_state()
+
+    # click — 座標 123, 456 不應出現在 message
+    r_click = mcp_server.execute_exact_action(action="click", target_id=0, dry_run=True)
+    expect(r_click["status"], "ok", "click 成功")
+    expect(
+        "123" not in r_click.get("message", "") and "456" not in r_click.get("message", ""),
+        True,
+        f"click message 不含座標 (實際: {r_click.get('message')!r})"
+    )
+    print(f"    (click message: {r_click.get('message')!r})")
+
+    # scroll — 座標不應出現在 message
+    r_scroll = mcp_server.execute_exact_action(
+        action="scroll", direction="down", clicks=3, dry_run=True
+    )
+    expect(
+        "target=" not in r_scroll.get("message", ""),
+        True,
+        f"scroll message 不含 target= (實際: {r_scroll.get('message')!r})"
+    )
+    print(f"    (scroll message: {r_scroll.get('message')!r})")
+
+    # drag (UIA→UIA 模式) — 起點/終點座標不應出現在 message
+    r_drag = mcp_server.execute_exact_action(
+        action="drag", start_id=0, end_id=0, dry_run=True
+    )
+    expect(r_drag["status"], "ok", "drag 成功")
+    expect(
+        "(" not in r_drag.get("message", "") or "拖曳" in r_drag.get("message", ""),
+        True,
+        f"drag message 不含座標 (實際: {r_drag.get('message')!r})"
+    )
+    print(f"    (drag message: {r_drag.get('message')!r})")
+
+    # ⚠️ server.py 仍會 pop 掉 coord key (R4)
+    expect(r_click.get("coord"), None, "click 結果的 coord key 仍被 pop (R4)")
+finally:
+    engine.get_clickable_elements = orig_get
+    engine.generate_marked_screenshot = orig_gen
+
+
+print("\n=== R7-2: encode_image_to_base64 已改為私有 _encode_image_to_base64_raw ===")
+expect(
+    not hasattr(engine, "encode_image_to_base64"),
+    True,
+    "engine.encode_image_to_base64 不應存在 (R7 改為私有)"
+)
+expect(
+    hasattr(engine, "_encode_image_to_base64_raw"),
+    True,
+    "engine._encode_image_to_base64_raw 應存在"
+)
+
+
+print("\nAll R7 ContextGuard tests passed!")
