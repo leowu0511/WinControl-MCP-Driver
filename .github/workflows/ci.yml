@@ -29,15 +29,18 @@ jobs:
 
       - name: Verify entry points
         run: |
-          wcmd-mcp --help || python -m wcmd --help
+          python -c "import wcmd; print('wcmd', wcmd.__version__)"
+          python -c "from wcmd.server import main; from wcmd.engine import main as cli_main; print('entry points OK')"
+        env:
+          WCMD_VISION_API_KEY: "sk-dummy-for-test"
 
       - name: Run tests
         run: |
-          pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short
         env:
           WCMD_VISION_API_KEY: "sk-dummy-for-tests"
 
       - name: Lint
         run: |
-          ruff check src/ tests/
+          python -m ruff check src/ tests/
         continue-on-error: true

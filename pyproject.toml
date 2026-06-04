@@ -46,6 +46,12 @@ wcmd-mcp = "wcmd.server:main"
 # 也提供 CLI 模式給開發者除錯
 wcmd-cli = "wcmd.engine:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["wcmd*"]
