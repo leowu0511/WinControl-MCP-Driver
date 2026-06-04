@@ -230,6 +230,47 @@ claude mcp list
 
 ## 常見問題 (Troubleshooting)
 
+### Q0: 安裝時 `WinError 5: 拒絕存取` (pydantic-core 衝突)
+
+**症狀**：
+```
+ERROR: Could not install packages due to an OSError: [WinError 5] 拒絕存取:
+'C:\Users\xxx\AppData\Local\Programs\Python\Python3xx\Lib\site-packages\~ydantic_core\_pydantic_core.cp310-win_amd64.pyd'
+```
+
+**原因**：你在用系統 Python，pip 想降版 `pydantic-core` (mcp 的傳遞依賴) → 需覆寫 `.pyd` 編譯檔 → Windows 拒絕。
+
+**✅ 推薦：用虛擬環境**（最乾淨）：
+
+```powershell
+python -m venv C:\wcmd-venv
+C:\wcmd-venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install git+https://github.com/leowu0511/WinControl-MCP-Driver.git
+```
+
+裝完後 MCP config 用絕對路徑：
+```json
+{
+  "mcpServers": {
+    "wcmd": {
+      "command": "C:\\wcmd-venv\\Scripts\\wcmd-mcp.exe",
+      "env": { "WCMD_VISION_API_KEY": "sk-..." }
+    }
+  }
+}
+```
+
+**⚡ 快速：用 `--user` 旗標**（不需 venv）：
+```bash
+pip install --user git+https://github.com/leowu0511/WinControl-MCP-Driver.git
+```
+
+**🔧 強制解法**（上兩個都失敗時）：
+1. 關閉所有 Python 相關程式（VS Code、Cursor、舊 MCP server）
+2. **以系統管理員身分**重新開 PowerShell
+3. 再跑 `pip install ...`
+
 ### Q1: `wcmd-mcp` 找不到指令
 
 **原因**：pip 安裝到全域或虛擬環境，但目前 shell PATH 沒包含

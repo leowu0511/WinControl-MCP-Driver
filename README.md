@@ -79,6 +79,17 @@ export WCMD_VISION_MODEL="qwen3.7-plus"
 
 > **不需要 Vision Model** 也可以使用 `get_screen_state` (Tier 1) 與 `execute_exact_action` (Tier 2)，但 `execute_semantic_intent` (Tier 3) 必須有 API Key。
 
+> ⚠️ **安裝遇權限問題？** 看到 `WinError 5: 拒絕存取` 通常是 pip 在寫入系統 Python。
+> **推薦解法**：用虛擬環境（venv），可避免 90% 的 Windows 安裝問題：
+> ```bash
+> python -m venv C:\wcmd-venv
+> C:\wcmd-venv\Scripts\Activate.ps1
+> pip install git+https://github.com/leowu0511/WinControl-MCP-Driver.git
+> ```
+> 然後 MCP config 的 `command` 改用 `C:\wcmd-venv\Scripts\wcmd-mcp.exe`
+> （或用 `wcmd-mcp`，前提是 venv 已啟用）。
+> 其他解法見下方 [Troubleshooting](#️-安裝疑難排解)。
+
 ### 步驟 3：註冊到你的 MCP Client
 
 在對應的設定檔加入（請依你的 Client 調整 `env` 內的 API Key）：
@@ -174,12 +185,94 @@ export WCMD_VISION_MODEL="qwen3.7-plus"
 
 ## 🔒 安全性與隱私
 
-* **不會** 上傳截圖到任何地方 (Base64 編碼只送給你指定的 Vision Model)
-* **不會** 蒐集任何遙測資料
-* API Key **永遠** 由使用者自己設定，**永遠不會** commit 到 repo
-* 預設 `dry_run=False` 才會實際操控滑鼠鍵盤，測試時可先用 `dry_run=True` 預演
+```bash
+# 安裝開發依賴
+pip install -e ".[dev]"
 
-> ⚠️ **使用風險**：本工具會實際操控你的電腦。請勿對生產環境或敏感資料執行未經審查的指令。
+# 跑全部測試
+python -m pytest tests/ -v
+
+# CLI 模式 (本機手動測試)
+wcmd-cli "幫我打開記事本"
+
+# 啟動 MCP server (stdio 模式，給 MCP Client 用)
+wcmd-mcp
+
+# 帶 Grid 模式
+wcmd-cli --force-grid --grid-rows 8 --grid-cols 12 "點中央"
+```
+
+---
+
+## ⚠️ 安裝疑難排解
+
+### Q1: `WinError 5: 拒絕存取` (安裝時)
+
+**症狀**：
+```
+ERROR: Could not install packages due to an OSError: [WinError 5] 拒絕存取:
+'C:\Users\xxx\AppData\Local\Programs\Python\Python3xx\Lib\site-packages\~ydantic_core\_pydantic_core.cp310-win_amd64.pyd'
+```
+
+**原因**：你在用**系統 Python**（如 Microsoft Store 安裝的那個），pip 試圖覆寫 `pydantic-core` 的 `.pyd` 編譯檔，但該檔案可能被另一個 Python 進程鎖住、或目錄需要 admin 權限。
+
+**✅ 推薦解法：用虛擬環境**（90% 情況有效）：
+```powershell
+python -m venv C:\wcmd-venv
+C:\wcmd-venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install git+https://github.com/leowu0511/WinControl-MCP-Driver.git
+```
+然後 MCP config 內 `command` 用絕對路徑：
+```json
+"command": "C:\\wcmd-venv\\Scripts\\wcmd-mcp.exe"
+```
+
+**⚡ 快速解法：加 `--user` 旗標**（不需 venv，但可能污染 user site-packages）：
+```bash
+pip install --user git+https://github.com/leowu0511/WinControl-MCP-Driver.git
+```
+
+**🔧 強制解法：先解除鎖定**（如果上面都失敗）：
+1. 關閉所有 Python 相關程式（VS Code、Cursor、舊 MCP server 進程）
+2. 重新開 PowerShell **以系統管理員身分執行**
+3. 再跑 `pip install ...`
+
+### Q2: `wcmd-mcp` 找不到指令
+
+**症狀**：MCP Client 顯示「找不到 wcmd-mcp 指令」。
+
+**解法**：
+- 若是 venv 裝的：MCP config 用絕對路徑 `"C:\\wcmd-venv\\Scripts\\wcmd-mcp.exe"`
+- 若是 --user 裝的：MCP config 改用 `python -m wcmd`（先把 `wcmd-mcp` 字串改成兩段 args）
+
+### Q3: 安裝成功但啟動時 `ImportError`
+
+**症狀**：
+```
+ImportError: DLL load failed while importing win32api
+```
+
+**原因**：常見於 Windows 上 Python 3.11+，缺少 Visual C++ Runtime。
+
+**解法**：安裝 [VC++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) 後重試。
+
+### Q4: 滑鼠/鍵盤沒反應
+
+**可能原因**：
+1. Windows 設定 → 隱私與安全性 → 輔助使用 → 開啟「讓 App 控制您的裝置」
+2. 防毒軟體阻擋
+3. 有其他程式 (如簡報模式、遊戲) 鎖住輸入
+
+**先試**：
+```bash
+wcmd-cli "測試" --dry-run
+# 看到「DRY-RUN」訊息代表程式能跑，只是沒真的動
+```
+
+### Q5: 完整文件
+
+更多問題見 [`INSTALL.md`](INSTALL.md) 的 Troubleshooting 段。
 
 ---
 
@@ -189,8 +282,11 @@ export WCMD_VISION_MODEL="qwen3.7-plus"
 # 安裝開發依賴
 pip install -e ".[dev]"
 
-# 跑全部測試
+# 跑全部測試 (CI 用的)
 python -m pytest tests/ -v
+
+# 跑單一 script-style 測試
+python tests/test_phase26.py
 
 # CLI 模式 (本機手動測試)
 wcmd-cli "幫我打開記事本"
