@@ -3,4 +3,4 @@
 
 __version__ = "0.1.0"
 __author__ = "leowu0511"
-__license__ = "Apache-2.0"
+__license__ = "MIT"

@@ -2,7 +2,7 @@
 
 > **讓 AI Agent 用自然語言操控 Windows UI** — 一個 Model Context Protocol (MCP) 伺服器，把 Claude/Cursor/Roo Code/Cline 等 Agent 變成「看得懂螢幕、會點滑鼠」的 Windows 自動化助理。
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)](https://www.microsoft.com/windows)
 
@@ -197,7 +197,7 @@ wcmd-cli --force-grid --grid-rows 8 --grid-cols 12 "點中央"
 
 ## 📄 授權
 
-本專案採用 **Apache License 2.0** — 詳見 [`LICENSE`](LICENSE) 檔案。
+本專案採用 **MIT License** — 詳見 [`LICENSE`](LICENSE) 檔案。
 
 ---
 

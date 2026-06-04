@@ -7,7 +7,7 @@ name = "WCMD"
 version = "0.1.0"
 description = "WinControl MCP Driver — 讓 AI Agent 用自然語言操控 Windows UI 的 MCP 伺服器"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 authors = [
     { name = "leowu0511" },
 ]
@@ -15,7 +15,7 @@ keywords = ["mcp", "ai-agent", "windows", "ui-automation", "vision", "claude", "
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows :: Windows 10",
     "Operating System :: Microsoft :: Windows :: Windows 11",
     "Programming Language :: Python :: 3.10",
