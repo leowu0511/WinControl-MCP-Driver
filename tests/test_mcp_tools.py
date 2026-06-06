@@ -334,10 +334,17 @@ engine.get_clickable_elements = lambda: [
 engine.generate_marked_screenshot = lambda e: {i: (i*100, 100) for i in range(10)}
 try:
     # Step 1: 感知
+    # ContextGuard: include_screenshot=True 時 text_list 會被設為 None (避免重複)
+    # 所以先不帶截圖取得 text_list，再帶截圖驗證截圖功能
+    state1_noimg = mcp_server.get_screen_state(include_screenshot=False)
+    expect(state1_noimg["mode"], "uia", "感知 → UIA 模式")
+    expect(state1_noimg["element_count"], 10, "抓到 10 個元素")
+    expect("Btn5" in state1_noimg["text_list"], True, "text_list 提到 Btn5")
+
     state1 = mcp_server.get_screen_state(include_screenshot=True)
-    expect(state1["mode"], "uia", "感知 → UIA 模式")
-    expect(state1["element_count"], 10, "抓到 10 個元素")
-    expect("Btn5" in state1["text_list"], True, "text_list 提到 Btn5")
+    expect(state1["mode"], "uia", "感知 → UIA 模式 (含截圖)")
+    expect(state1["element_count"], 10, "抓到 10 個元素 (含截圖)")
+    expect(state1["text_list"], None, "含截圖時 text_list 應為 None (ContextGuard)")
     print(f"    (Agent 觀察到 {state1['element_count']} 個元素，截圖 {len(state1['screenshot_base64'])} chars)")
 
     # Step 2: Agent 根據 text_list 決定要按 Btn5 (target_id=5)
